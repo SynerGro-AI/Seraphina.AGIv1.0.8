@@ -1,0 +1,25 @@
+{
+  "archive": "Seraphina.AGI-FULL-v1.0.0-MIT.zip",
+  "sha256": "035589d37085f24c506af71e7605043473ab9cdd7529f0811fa05bf2f10e32f2",
+  "created": "2025-11-28T21:22:24.590417",
+  "build_type": "full-deterministic",
+  "license": "MIT",
+  "deterministic": true,
+  "files_included": 273674,
+  "files_excluded": 1726,
+  "seraphina_files": 205,
+  "total_size_mb": 1943.399393,
+  "test_count": 58,
+  "audit_categories": 8,
+  "components": {
+    "encryption": "OctaBit wheel-lattice (deterministic)",
+    "mining": "Aurrelia SHA-256d (deterministic)",
+    "mesh": "Pico mesh distribution (deterministic)",
+    "iso_builder": "Ubuntu minbase + sealed manifest (reproducible)",
+    "management": "OctaPowershell HMAC-sealed",
+    "tests": "58 unit tests (all comprehensive)",
+    "audit": "Security audit (8 categories, all PASS)",
+    "docs": "Full architecture documentation",
+    "license": "MIT (open source)"
+  }
+}

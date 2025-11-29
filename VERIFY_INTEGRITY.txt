@@ -1,0 +1,35 @@
+VERIFY YOUR DOWNLOAD
+====================
+
+Why Verify?
+-----------
+Ensures file integrity and completeness.
+
+How to Verify
+-------------
+
+Linux/Mac:
+  sha256sum -c ../verification/CHECKSUMS.sha256
+
+Windows PowerShell:
+  (Get-FileHash -Path "Seraphina.AGI-FULL-v1.0.0-MIT.zip" -Algorithm SHA256).Hash
+  (Compare with ../verification/CHECKSUMS.sha256)
+
+Windows CMD:
+  certUtil -hashfile "Seraphina.AGI-FULL-v1.0.0-MIT.zip" SHA256
+
+All Hashes
+----------
+Location: ../verification/CHECKSUMS.sha256
+
+If Hashes Don't Match
+---------------------
+1. Re-download the file
+2. Check internet connection
+3. Try different download source
+4. Check disk space
+
+After Verification
+-------------------
+File is safe to extract and use.
+Proceed with extraction.

@@ -1,0 +1,52 @@
+EXTRACT YOUR ARCHIVE
+====================
+
+Method 1: Simple Extraction
+----------------------------
+
+Windows:
+  Expand-Archive -Path Seraphina.AGI-FULL-v1.0.0-MIT.zip -DestinationPath .
+
+Linux/Mac:
+  unzip Seraphina.AGI-FULL-v1.0.0-MIT.zip
+
+Method 2: GUI Extraction
+-------------------------
+
+Windows: Right-click > Extract All
+Mac: Double-click the .zip file
+Linux: Right-click > Extract
+
+After Extraction
+----------------
+You will have a 'seraphina' folder with:
+- README.md
+- tests/ (run tests here)
+- docs/ (architecture documentation)
+- audits/ (security audit reports)
+- (and many more files)
+
+Troubleshooting
+---------------
+
+Archive Corrupted?
+  Check SHA-256 hash first (see VERIFY_INTEGRITY.txt)
+  Re-download if hash doesn't match
+
+Not Enough Space?
+  Full: needs 2+ GB free
+  Trinity: needs 500 MB free
+  Use external drive if needed
+
+Tool Missing?
+  Windows: Use built-in (Explore) or install 7-Zip
+  Mac: Built-in (double-click)
+  Linux: apt-get install unzip
+
+After Extraction
+----------------
+1. cd seraphina/
+2. Read README.md
+3. Run tests: python -m unittest tests/*.py -v
+4. Review docs/ folder
+5. Check audits/ folder
