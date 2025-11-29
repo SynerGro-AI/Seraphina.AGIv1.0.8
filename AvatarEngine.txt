@@ -1,0 +1,82 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { initHighFidelityAvatar, AvatarEngineHandle } from '@/lib/high-fidelity-avatar-engine';
+import { generateNoiseTexture, generateHologramStripeTexture } from '@/lib/procedural-texture-factory';
+import { registerIntervalTask } from '@/lib/seraphina-os-core';
+import { queryMetrics } from '@/lib/seraphina-metrics-store';
+import { getAdaptiveNormalizer } from '@/lib/adaptive-normalizer';
+
+interface UseAvatarEngineOptions {
+  modelUrl?: string;
+  metricSubsystem?: string; // which subsystem to sample for intensity
+  metricKey?: string;       // metric key for intensity mapping
+  intensityWindowMs?: number; // averaging window
+  hologram?: boolean;
+  proceduralSkin?: boolean;
+}
+
+export function useAvatarEngine(opts: UseAvatarEngineOptions) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const handleRef = useRef<AvatarEngineHandle | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    let cancelled = false;
+    initHighFidelityAvatar({
+      canvas: canvasRef.current,
+      width: canvasRef.current.clientWidth || 640,
+      height: canvasRef.current.clientHeight || 480,
+      modelUrl: opts.modelUrl,
+      hologram: opts.hologram,
+      proceduralSkin: opts.proceduralSkin,
+    }).then(h => {
+      if (cancelled) return; handleRef.current = h; setReady(true);
+      // Procedural overlay to meshes once loaded
+      setTimeout(() => {
+        h.root.traverse((o: any) => {
+          if (o.isMesh && o.material) {
+            try {
+              const baseMap = generateNoiseTexture({ size: 256, seed: 42, colorA: '#002233', colorB: '#00ffff' });
+              const stripes = generateHologramStripeTexture({ size: 256, stripes: 64 });
+              o.material.transparent = true;
+              o.material.emissive = (o.material.emissive || { set: ()=>{} });
+              o.material.emissive?.set?.('#0088aa');
+              o.material.userData._baseMap = baseMap;
+              o.material.userData._stripeMap = stripes;
+              if (o.material.map == null) o.material.map = baseMap;
+              o.material.needsUpdate = true;
+            } catch {}
+          }
+        });
+      }, 1000);
+    });
+    return () => { cancelled = true; handleRef.current?.dispose(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts.modelUrl]);
+
+  // Metric driven intensity mapping
+  useEffect(() => {
+    if (!opts.metricSubsystem || !opts.metricKey) return;
+    const id = `avatar-intensity-${opts.metricSubsystem}-${opts.metricKey}`;
+    const norm = getAdaptiveNormalizer(id, 300);
+    registerIntervalTask(id, 2000, async () => {
+      const since = Date.now() - (opts.intensityWindowMs ?? 10000);
+      const rows = await queryMetrics(opts.metricSubsystem!, opts.metricKey!, since);
+      if (!rows.length) return;
+      rows.forEach(r => norm.push(r.value));
+      const latest = rows[rows.length-1].value;
+      const intensity = norm.normalize(latest);
+      handleRef.current?.updateProceduralSkin?.(0.2 + intensity * 0.8);
+    });
+  }, [opts.metricSubsystem, opts.metricKey, opts.intensityWindowMs]);
+
+  return { canvasRef, ready, handle: handleRef.current };
+}
+
+export const AvatarViewport: React.FC<UseAvatarEngineOptions & { className?: string; style?: React.CSSProperties; }> = (props) => {
+  const { canvasRef, ready } = useAvatarEngine(props);
+  return <div className={props.className} style={{ position: 'relative', ...props.style }}>
+    <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+    {!ready && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'#0ff', fontSize:12, fontFamily:'monospace' }}>Initializing Avatar...</div>}
+  </div>;
+};

@@ -1,0 +1,130 @@
+/**
+ * Procedural Texture Factory
+ * Generates in-memory Canvas / Data textures so the avatar can "make her own" visuals
+ * without pulling external assets. All functions are deterministic given a seed.
+ */
+import * as THREE from 'three';
+
+function seededRandom(seed: number) {
+  return function() {
+    // xorshift32
+    seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296;
+  };
+}
+
+export interface NoiseTextureOptions {
+  size?: number;         // square dimension
+  seed?: number;         // RNG seed
+  octaves?: number;      // number of fbm layers
+  persistence?: number;  // amplitude falloff
+  colorA?: string;       // low color
+  colorB?: string;       // high color
+  contrast?: number;     // contrast multiplier
+}
+
+export function generateNoiseTexture(opts: NoiseTextureOptions = {}): THREE.CanvasTexture {
+  const size = opts.size ?? 256;
+  const seed = opts.seed ?? 1337;
+  const rnd = seededRandom(seed);
+  const octaves = opts.octaves ?? 4;
+  const persistence = opts.persistence ?? 0.5;
+  const contrast = opts.contrast ?? 1.25;
+  const cA = new THREE.Color(opts.colorA ?? '#082e46');
+  const cB = new THREE.Color(opts.colorB ?? '#09f9ff');
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const img = ctx.createImageData(size, size);
+
+  // Simple value noise grid
+  const gridSize = 32;
+  const grid: number[][] = [];
+  for (let y = 0; y <= gridSize; y++) {
+    const row: number[] = [];
+    for (let x = 0; x <= gridSize; x++) row.push(rnd());
+    grid.push(row);
+  }
+  function sample(nx: number, ny: number) {
+    const gx = nx * gridSize; const gy = ny * gridSize;
+    const x0 = Math.floor(gx), y0 = Math.floor(gy);
+    const x1 = x0 + 1, y1 = y0 + 1;
+    const sx = gx - x0, sy = gy - y0;
+    const n00 = grid[y0][x0], n10 = grid[y0][x1], n01 = grid[y1][x0], n11 = grid[y1][x1];
+    const ix0 = n00 + (n10 - n00) * (sx * sx * (3 - 2 * sx));
+    const ix1 = n01 + (n11 - n01) * (sx * sx * (3 - 2 * sx));
+    return ix0 + (ix1 - ix0) * (sy * sy * (3 - 2 * sy));
+  }
+  function fbm(x: number, y: number) {
+    let amp = 1, freq = 1, sum = 0, norm = 0;
+    for (let o = 0; o < octaves; o++) {
+      sum += sample((x * freq) % 1, (y * freq) % 1) * amp;
+      norm += amp;
+      amp *= persistence; freq *= 2;
+    }
+    return sum / norm;
+  }
+  let ptr = 0;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const n = Math.pow(fbm(x / size, y / size), contrast);
+      const col = cA.clone().lerp(cB, n);
+      img.data[ptr++] = (col.r * 255) | 0;
+      img.data[ptr++] = (col.g * 255) | 0;
+      img.data[ptr++] = (col.b * 255) | 0;
+      img.data[ptr++] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+export interface RadialGradientTextureOptions {
+  size?: number;
+  inner?: string;
+  outer?: string;
+  jitterRings?: number; // add subtle brightness rings
+}
+
+export function generateRadialGradientTexture(opts: RadialGradientTextureOptions = {}): THREE.CanvasTexture {
+  const size = opts.size ?? 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  g.addColorStop(0, opts.inner ?? 'rgba(0,255,255,0.95)');
+  g.addColorStop(1, opts.outer ?? 'rgba(0,64,128,0.0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,size,size);
+  if ((opts.jitterRings ?? 0) > 0) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i=0;i<(opts.jitterRings||0);i++) {
+      const r = Math.random()*0.5+0.2;
+      const ring = ctx.createRadialGradient(size/2,size/2, r*size*0.8, size/2,size/2, r*size);
+      ring.addColorStop(0,'rgba(0,200,255,0.05)');
+      ring.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle = ring; ctx.fillRect(0,0,size,size);
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+export interface HologramStripeTextureOptions { size?: number; stripes?: number; }
+export function generateHologramStripeTexture(opts: HologramStripeTextureOptions = {}): THREE.CanvasTexture {
+  const size = opts.size ?? 256; const stripes = opts.stripes ?? 32;
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  for (let y=0; y<size; y++) {
+    const t = (y / size) * stripes;
+    const on = (Math.floor(t) % 2) === 0;
+    ctx.fillStyle = on ? 'rgba(0,255,255,0.12)' : 'rgba(0,0,0,0)';
+    ctx.fillRect(0,y,size,1);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.needsUpdate = true;
+  return tex;
+}

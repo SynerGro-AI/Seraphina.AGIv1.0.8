@@ -1,0 +1,162 @@
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { badgeClasses } from '@/components/ui/badge-span';
+import { useAppContext } from '@/contexts/AppContext';
+import { Brain, Database, Search, Store, Activity } from 'lucide-react';
+
+export const NeuralStorageInterface: React.FC = () => {
+  const { storeData, retrieveData, neuralStorage } = useAppContext();
+  const [inputData, setInputData] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+
+  const handleStoreData = () => {
+    if (!inputData.trim()) return;
+    
+    const result = storeData(inputData);
+    setInputData('');
+    updateStats();
+  };
+
+  const handleSearch = () => {
+    if (!searchQuery.trim()) return;
+    
+    const results = retrieveData(searchQuery);
+    setSearchResults(results);
+  };
+
+  const updateStats = () => {
+    const currentStats = neuralStorage.getStats();
+    setStats(currentStats);
+  };
+
+  React.useEffect(() => {
+    updateStats();
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="w-5 h-5 text-blue-500" />
+            Neural Network Storage Interface
+          </CardTitle>
+          <CardDescription>
+            Seraphina's primary data storage system using quantum neural networks
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Store Data</label>
+              <Textarea
+                placeholder="Enter data to store in neural network..."
+                value={inputData}
+                onChange={(e) => setInputData(e.target.value)}
+                className="min-h-[100px]"
+              />
+              <Button onClick={handleStoreData} className="w-full">
+                <Store className="w-4 h-4 mr-2" />
+                Store in Neural Network
+              </Button>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Search Data</label>
+              <Input
+                placeholder="Search neural network..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <Button onClick={handleSearch} variant="outline" className="w-full">
+                <Search className="w-4 h-4 mr-2" />
+                Search Neural Network
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {searchResults.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="w-5 h-5 text-green-500" />
+              Search Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {searchResults.map((result, index) => (
+                <div key={index} className="p-3 bg-muted rounded-lg">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <span className={badgeClasses('outline','mb-2')}>
+                        Node: {result.nodeId}
+                      </span>
+                      <p className="text-sm">{JSON.stringify(result.knowledge, null, 2)}</p>
+                    </div>
+                    <span className={badgeClasses('secondary')}>
+                      Relevance: {(result.relevance * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {stats && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-purple-500" />
+              Neural Storage Statistics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-500">
+                  {stats.quantum?.totalNodes || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Neural Nodes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-500">
+                  {stats.quantum?.totalConnections || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Connections</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-500">
+                  {stats.infinite?.totalNodes || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Infinite Nodes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-500">
+                  {stats.totalCapacity}
+                </div>
+                <div className="text-sm text-muted-foreground">Capacity</div>
+              </div>
+            </div>
+            
+            <div className="mt-4 p-3 bg-muted rounded-lg">
+              <div className="text-sm font-medium mb-2">Storage Configuration:</div>
+              <div className="text-sm text-muted-foreground">
+                Primary: {stats.primary} | Backup: {stats.backup}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+};

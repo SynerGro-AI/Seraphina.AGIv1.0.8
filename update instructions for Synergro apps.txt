@@ -1,0 +1,5 @@
+Fast incremental (no packaging): npm run build:inc
+Incremental dist if changes: npm run dist:inc
+Force rebuild + bump version: npm run dist:inc -- --force --bump
+Force rebuild without bump: npm run dist:inc -- --force
+Just bump on change (no force): npm run dist:inc -- --bump

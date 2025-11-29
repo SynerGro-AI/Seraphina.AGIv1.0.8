@@ -1,0 +1,30 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+# Simple 4D tesseract projection to 3D (basic rotation)
+def project_4d_to_3d(points_4d, angle=0):
+    # 4D rotation matrix (simplified XY plane)
+    c, s = np.cos(angle), np.sin(angle)
+    rot4d = np.array([
+        [c, -s, 0, 0],
+        [s, c, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ])
+    rotated = points_4d @ rot4d.T
+    # Perspective projection: divide by 4th coord (w)
+    proj = rotated[:, :3] / rotated[:, 3:4]
+    return proj
+
+# Tesseract vertices (16 points in 4D: ±1 in each dim)
+coords = np.array(np.meshgrid([-1,1], [-1,1], [-1,1], [-1,1])).T.reshape(-1,4)
+proj = project_4d_to_3d(coords)
+
+# HD Plot
+fig = plt.figure(figsize=(10,8), dpi=300)  # High-res
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(proj[:,0], proj[:,1], proj[:,2], c=range(16), cmap='viridis', s=100, alpha=0.8)
+ax.set_title('4D Tesseract Projection (HD)')
+plt.savefig('4d_tesseract_hd.png', dpi=300, bbox_inches='tight')  # Export HD
+plt.show()

@@ -1,0 +1,609 @@
+/**
+ * Layered Lattice (8x8x8 shells) data structure with:
+ *  - Concentric shell interaction (diffusion / attenuation)
+ *  - Crystal "strings" (fixed + learnable) across voxels
+ *  - GPU texture atlas packing (64x64 per layer) for WebGL/Canvas
+ *  - Lightweight diff & RLE compression for mesh transmission
+ *
+ * Design goals:
+ *  - Keep core operations O(N) over active voxels rather than full volume when sparse
+ *  - Allow incremental learning/pruning of strings based on usage (Hebbian-like)
+ *  - Provide deterministic packing & diff encodings (versioned)
+ */
+
+// --- Types -----------------------------------------------------------------
+
+export interface LatticeOptions {
+  layers: number;              // Number of concentric shells (>=1)
+  diffusion?: number;          // Base diffusion coefficient (0..1)
+  radialAttenuation?: number;  // Attenuation per shell step (0..1)
+  maxLearnedStrings?: number;  // Cap on learned strings
+  pruneThreshold?: number;     // Minimum weight before pruning
+  strengthenFactor?: number;   // Weight increment factor
+  decayFactor?: number;        // Weight decay per maintenance step
+  adaptiveDiffusion?: boolean; // Enable entropy-driven adaptation
+}
+
+export interface LearnedStringStats {
+  id: number;
+  length: number;
+  weight: number;
+  learned: boolean;
+  usage: number;
+  lastUpdated: number;
+}
+
+// Packed voxel index: layer * 512 + (z<<6) | (y<<3) | x  (x,y,z in 0..7)
+const VOXELS_PER_LAYER = 512; // 8*8*8
+
+// --- Utility: Morton code (optional) ---------------------------------------
+// Not strictly required; keep for potential locality improvements.
+function morton3D(x: number, y: number, z: number): number {
+  // Interleave 3 bits quickly (since only 0..7) -> x0 y0 z0 x1 y1 z1 x2 y2 z2
+  return (x & 7) | ((y & 7) << 1) | ((z & 7) << 2);
+}
+
+// --- String Table ----------------------------------------------------------
+
+interface InternalString {
+  id: number;
+  points: Uint16Array; // packed voxel indices (16 bits enough: up to 2^16 > layers*512 for moderate layers)
+  weight: number;      // adaptive strength
+  usage: number;       // recent activation count
+  learned: boolean;    // true if dynamically added
+  lastUpdated: number; // epoch ms
+}
+
+/**
+ * Manage crystal strings (fixed & learned). Provides adaptive strengthening & pruning.
+ */
+export class CrystalStringSet {
+  private strings: InternalString[] = [];
+  private nextId = 1;
+
+  constructor(private opts: LatticeOptions) {}
+
+  addFixed(points: number[]): number {
+    return this.add(points, false);
+  }
+
+  addLearned(points: number[]): number {
+    if (this.countLearned() >= (this.opts.maxLearnedStrings ?? 256)) {
+      this.pruneWeakest();
+    }
+    return this.add(points, true);
+  }
+
+  private add(points: number[], learned: boolean): number {
+    const id = this.nextId++;
+    this.strings.push({
+      id,
+      points: Uint16Array.from(points),
+      weight: 1,
+      usage: 0,
+      learned,
+      lastUpdated: Date.now()
+    });
+    return id;
+  }
+
+  strengthen(id: number, amount = 1): void {
+    const s = this.strings.find(s => s.id === id);
+    if (!s) return;
+    const factor = this.opts.strengthenFactor ?? 0.05;
+    s.weight += amount * factor;
+    s.usage += amount;
+    s.lastUpdated = Date.now();
+  }
+
+  decay(): void {
+    const decay = this.opts.decayFactor ?? 0.01;
+    this.strings.forEach(s => {
+      s.weight = Math.max(0, s.weight - decay);
+    });
+    this.pruneByThreshold();
+  }
+
+  getAll(): InternalString[] { return this.strings; }
+
+  stats(): LearnedStringStats[] {
+    return this.strings.map(s => ({
+      id: s.id,
+      length: s.points.length,
+      weight: +s.weight.toFixed(4),
+      learned: s.learned,
+      usage: s.usage,
+      lastUpdated: s.lastUpdated
+    }));
+  }
+
+  private pruneByThreshold(): void {
+    const thresh = this.opts.pruneThreshold ?? 0.2;
+    const before = this.strings.length;
+    this.strings = this.strings.filter(s => !s.learned || s.weight >= thresh);
+    if (before !== this.strings.length) {
+      // placeholder for logging hook
+    }
+  }
+
+  private pruneWeakest(): void {
+    // Remove lowest weight learned string
+    let minIdx = -1; let minWeight = Infinity;
+    this.strings.forEach((s, i) => {
+      if (s.learned && s.weight < minWeight) { minWeight = s.weight; minIdx = i; }
+    });
+    if (minIdx >= 0) this.strings.splice(minIdx, 1);
+  }
+
+  private countLearned(): number {
+    return this.strings.reduce((n, s) => n + (s.learned ? 1 : 0), 0);
+  }
+}
+
+// --- Lattice Core ----------------------------------------------------------
+
+export class LayeredLattice8 {
+  readonly layers: number;
+  readonly totalVoxels: number;
+  // Occupancy bitset & activation (Uint8 0..255) per voxel
+  readonly occupancy: Uint32Array;
+  readonly activation: Uint8Array;
+  readonly strings: CrystalStringSet;
+
+  private scratch: Float32Array; // for diffusion step
+  private opts: LatticeOptions;
+  // Diff dictionary for repeated sparse patterns
+  private dictEnabled = false;
+  private diffDictIndices: number[][] = [];
+  private diffDictMap: Map<string, number> = new Map();
+  private diffDictCapacity = 64;
+
+  constructor(opts: LatticeOptions) {
+    if (opts.layers < 1) throw new Error('layers must be >=1');
+    this.opts = opts;
+    this.layers = opts.layers;
+    this.totalVoxels = this.layers * VOXELS_PER_LAYER;
+    this.occupancy = new Uint32Array(Math.ceil(this.totalVoxels / 32));
+    this.activation = new Uint8Array(this.totalVoxels); // quantized
+    this.scratch = new Float32Array(this.totalVoxels);
+    this.strings = new CrystalStringSet(opts);
+  }
+
+  // Packing (layer,x,y,z)
+  pack(layer: number, x: number, y: number, z: number): number {
+    return layer * VOXELS_PER_LAYER + ((z << 6) | (y << 3) | x);
+  }
+
+  unpack(index: number): { layer: number; x: number; y: number; z: number } {
+    const layer = (index / VOXELS_PER_LAYER) | 0;
+    const local = index % VOXELS_PER_LAYER;
+    const x = local & 7;
+    const y = (local >> 3) & 7;
+    const z = (local >> 6) & 7;
+    return { layer, x, y, z };
+  }
+
+  /** Inverse atlas mapping: given atlas (u,v) -> voxel (layer,x,y,z). Assumes 64x64 per layer layout. */
+  atlasToVoxel(u: number, v: number): { layer: number; x: number; y: number; z: number } | null {
+    if (u < 0 || v < 0) return null;
+    const layer = (v / 64) | 0;
+    if (layer >= this.layers) return null;
+    const localV = v % 64;
+    if (localV >= 8) return null; // only first 8 rows used currently
+    const sliceCol = (u / 8) | 0; // z
+    if (sliceCol < 0 || sliceCol >= 8) return null;
+    const x = u % 8;
+    const y = localV; // 0..7
+    const z = sliceCol;
+    return { layer, x, y, z };
+  }
+
+  setOccupied(layer: number, x: number, y: number, z: number): void {
+    const idx = this.pack(layer, x, y, z);
+    this.occupancy[idx >>> 5] |= (1 << (idx & 31));
+  }
+
+  isOccupied(layer: number, x: number, y: number, z: number): boolean {
+    const idx = this.pack(layer, x, y, z);
+    return ((this.occupancy[idx >>> 5] >>> (idx & 31)) & 1) === 1;
+  }
+
+  setActivation(layer: number, x: number, y: number, z: number, value: number): void {
+    this.activation[this.pack(layer, x, y, z)] = value & 0xFF;
+  }
+
+  getActivation(layer: number, x: number, y: number, z: number): number {
+    return this.activation[this.pack(layer, x, y, z)];
+  }
+
+  /**
+   * Diffusion across spatial neighbors + radial shell interaction.
+   * Simple model: newValue = (1-d)*orig + d*(spatialAvg * spatialWeight + radialAvg * radialWeight)
+   */
+  diffuse(iterations = 1): void {
+    const d = this.opts.diffusion ?? 0.18;
+    const att = this.opts.radialAttenuation ?? 0.6; // attenuation per shell step
+    for (let it = 0; it < iterations; it++) {
+      for (let layer = 0; layer < this.layers; layer++) {
+        for (let z = 0; z < 8; z++) {
+          for (let y = 0; y < 8; y++) {
+            for (let x = 0; x < 8; x++) {
+              const idx = this.pack(layer, x, y, z);
+              const orig = this.activation[idx];
+
+              // 6-neighborhood (axis-aligned) inside a layer
+              let sum = 0; let count = 0;
+              if (x > 0) { sum += this.activation[idx - 1]; count++; }
+              if (x < 7) { sum += this.activation[idx + 1]; count++; }
+              if (y > 0) { sum += this.activation[idx - (1 << 3)]; count++; }
+              if (y < 7) { sum += this.activation[idx + (1 << 3)]; count++; }
+              if (z > 0) { sum += this.activation[idx - (1 << 6)]; count++; }
+              if (z < 7) { sum += this.activation[idx + (1 << 6)]; count++; }
+              const spatialAvg = count ? sum / count : orig;
+
+              // Radial neighbors (shells in same x,y,z) with attenuation
+              let radialSum = 0; let radialWeight = 0;
+              if (layer > 0) {
+                radialSum += this.activation[idx - VOXELS_PER_LAYER] * att;
+                radialWeight += att;
+              }
+              if (layer < this.layers - 1) {
+                radialSum += this.activation[idx + VOXELS_PER_LAYER] * att;
+                radialWeight += att;
+              }
+              const radialAvg = radialWeight ? radialSum / radialWeight : orig;
+
+              const blended = (1 - d) * orig + d * (0.7 * spatialAvg + 0.3 * radialAvg);
+              this.scratch[idx] = blended;
+            }
+          }
+        }
+      }
+      // Quantize back
+      for (let i = 0; i < this.totalVoxels; i++) {
+        this.activation[i] = Math.max(0, Math.min(255, this.scratch[i] | 0));
+      }
+    }
+  }
+
+  /** Adaptive diffusion adjusting coefficient based on entropy (lower entropy => higher diffusion). */
+  diffuseAdaptive(iterations = 1): void {
+    if (!this.opts.adaptiveDiffusion) { this.diffuse(iterations); return; }
+    for (let i = 0; i < iterations; i++) {
+      const entropy = this.computeEntropy(); // 0..~8 bits
+      // target ~4 bits; adjust diffusion in [0.05,0.35]
+      const target = 4.0;
+      const base = this.opts.diffusion ?? 0.18;
+      const delta = Math.max(-2, Math.min(2, target - entropy));
+      const adaptive = Math.max(0.05, Math.min(0.35, base + delta * 0.03));
+      const prevD = this.opts.diffusion;
+      this.opts.diffusion = adaptive; // temporarily override
+      this.diffuse(1);
+      this.opts.diffusion = prevD; // restore
+    }
+  }
+
+  private computeEntropy(): number {
+    // coarse 16-bin histogram over all activations
+    const bins = new Uint32Array(16);
+    for (let i = 0; i < this.activation.length; i++) {
+      bins[this.activation[i] >> 4]++;
+    }
+    const n = this.activation.length;
+    let H = 0;
+    for (let b = 0; b < 16; b++) {
+      if (bins[b] === 0) continue;
+      const p = bins[b] / n;
+      H -= p * Math.log2(p);
+    }
+    return H; // bits
+  }
+
+  /** Apply string strengthening based on mean activation along each string */
+  reinforceStrings(): void {
+    for (const s of this.strings.getAll()) {
+      let sum = 0;
+      for (const p of s.points) sum += this.activation[p];
+      const mean = sum / s.points.length;
+      if (mean > 64) { // activation threshold
+        this.strings.strengthen(s.id, mean / 255);
+        // Optional: boost activation along strong strings (feedback)
+        const boost = Math.min(4, Math.floor(s.weight));
+        if (boost > 0) {
+          for (const p of s.points) {
+            this.activation[p] = Math.min(255, this.activation[p] + boost);
+          }
+        }
+      }
+    }
+    // Periodic decay (could be external trigger) left explicit
+  }
+
+  /** Discover a new string by selecting top-k active voxels forming a monotonic radial path */
+  learnString(k = 8): number | null {
+    // Collect voxel indices with activation > threshold
+    const threshold = 100;
+    const candidates: number[] = [];
+    for (let i = 0; i < this.totalVoxels; i++) {
+      if (this.activation[i] > threshold) candidates.push(i);
+    }
+    if (candidates.length < k) return null;
+    // Sort by activation descending
+    candidates.sort((a, b) => this.activation[b] - this.activation[a]);
+    // Pick first k, then order by layer (inner->outer) for a radial string
+    const subset = candidates.slice(0, k).sort((a, b) => a - b);
+    return this.strings.addLearned(subset);
+  }
+
+  /** Advanced path-based learning with locality (6-neighbor constraint) and optional radial monotonicity. */
+  learnStringPath(k = 8, monotonicRadial = true): number | null {
+    const threshold = 80; // lower to encourage path formation
+    // Gather candidate starts with activation > threshold
+    const starts: number[] = [];
+    for (let i = 0; i < this.totalVoxels; i++) if (this.activation[i] > threshold) starts.push(i);
+    if (!starts.length) return null;
+    // sort by activation desc
+    starts.sort((a,b)=> this.activation[b]-this.activation[a]);
+    const start = starts[0];
+    const path: number[] = [start];
+    const visited = new Set<number>([start]);
+    while (path.length < k) {
+      const last = path[path.length-1];
+      const { layer,x,y,z } = this.unpack(last);
+      const neighbors: number[] = [];
+      const push = (nx:number,ny:number,nz:number,nl:number)=>{
+        if (nx<0||nx>7||ny<0||ny>7||nz<0||nz>7||nl<0||nl>=this.layers) return;
+        const idx = this.pack(nl,nx,ny,nz);
+        if (visited.has(idx)) return;
+        if (this.activation[idx] <= threshold) return;
+        if (monotonicRadial && nl < layer) return; // enforce outward or equal
+        neighbors.push(idx);
+      };
+      // 6-neighbors + radial outward
+      push(x-1,y,z,layer); push(x+1,y,z,layer); push(x,y-1,z,layer); push(x,y+1,z,layer); push(x,y,z-1,layer); push(x,y,z+1,layer);
+      if (layer+1 < this.layers) push(x,y,z,layer+1);
+      if (!neighbors.length) break;
+      neighbors.sort((a,b)=> this.activation[b]-this.activation[a]);
+      const next = neighbors[0];
+      path.push(next); visited.add(next);
+    }
+    if (path.length >= 4) return this.strings.addLearned(path);
+    return null;
+  }
+
+  /** Pack activations into a 2D atlas (64x64 per layer). Returns raw luminance array. */
+  packAtlas(): { width: number; height: number; data: Uint8Array } {
+    const width = 64;
+    const height = 64 * this.layers;
+    const data = new Uint8Array(width * height);
+    for (let layer = 0; layer < this.layers; layer++) {
+      const layerOffsetY = layer * 64;
+      for (let z = 0; z < 8; z++) {
+        const sliceCol = z; // 0..7
+        for (let y = 0; y < 8; y++) {
+          for (let x = 0; x < 8; x++) {
+            const u = sliceCol * 8 + x; // 0..63
+            const v = y; // 0..7 inside slice row (only one row for 8 slices)
+            const atlasIndex = (layerOffsetY + v) * width + u;
+            data[atlasIndex] = this.getActivation(layer, x, y, z);
+          }
+        }
+      }
+    }
+    return { width, height, data };
+  }
+
+  /** Build an ImageData object (if running in browser) */
+  packAtlasImageData(): ImageData | null {
+    if (typeof ImageData === 'undefined') return null;
+    const { width, height, data } = this.packAtlas();
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i];
+      const j = i * 4;
+      rgba[j] = v; rgba[j + 1] = v; rgba[j + 2] = v; rgba[j + 3] = 255;
+    }
+    return new ImageData(rgba, width, height);
+  }
+
+  // --- Compression ---------------------------------------------------------
+
+  /**
+   * Diff encode activation array relative to previous.
+   * Format:
+   *  byte 0: 0xC1 (magic/version)
+   *  byte 1: mode (0=full,1=diff,2=RLE)
+   *  if mode=0: raw activations follow
+   *  if mode=1: varint count, then repeated (varint index, byte value)
+   *  if mode=2: RLE as (value byte, runLength varint) until end
+   */
+  diffEncode(prev?: Uint8Array): Uint8Array {
+    const cur = this.activation;
+    const n = cur.length;
+    if (!prev || prev.length !== n) {
+      // full frame
+      const out = new Uint8Array(2 + n);
+      out[0] = 0xC1; out[1] = 0; out.set(cur, 2);
+      return out;
+    }
+    let changed = 0;
+    const changedIndices: number[] = [];
+    for (let i = 0; i < n; i++) if (cur[i] !== prev[i]) { changed++; changedIndices.push(i); }
+    const frac = changed / n;
+    // Heuristic thresholds
+    if (frac > 0.5) {
+      // Try RLE of full frame
+      const chunks: number[] = [0xC1, 2];
+      let i = 0;
+      while (i < n) {
+        const value = cur[i];
+        let run = 1; i++;
+        while (i < n && cur[i] === value && run < 0x3FFFF) { run++; i++; }
+        chunks.push(value);
+        this.writeVarint(chunks, run);
+      }
+      return Uint8Array.from(chunks);
+    } else {
+      // Attempt dictionary usage
+      if (this.dictEnabled && changed > 0 && changed <= 64) {
+        const signature = changedIndices.join(',');
+        const existing = this.diffDictMap.get(signature);
+        if (existing !== undefined) {
+          const chunks: number[] = [0xC1, 3];
+            this.writeVarint(chunks, existing); // dict id
+            this.writeVarint(chunks, changedIndices.length); // count sanity
+            // values only (indices implicit)
+            for (const idx of changedIndices) chunks.push(cur[idx]);
+            return Uint8Array.from(chunks);
+        } else if (this.diffDictIndices.length < this.diffDictCapacity && changed <= 32) {
+          const id = this.diffDictIndices.length;
+          this.diffDictIndices.push(changedIndices.slice());
+          this.diffDictMap.set(signature, id);
+        }
+      }
+      // Fallback sparse diff (mode 1)
+      const chunks: number[] = [0xC1, 1];
+      this.writeVarint(chunks, changed);
+      for (const i of changedIndices) {
+        this.writeVarint(chunks, i);
+        chunks.push(cur[i]);
+      }
+      return Uint8Array.from(chunks);
+    }
+  }
+
+  diffDecode(prev: Uint8Array | undefined, encoded: Uint8Array): Uint8Array {
+    if (encoded[0] !== 0xC1) throw new Error('Bad diff magic');
+    const mode = encoded[1];
+    if (mode === 0) {
+      return encoded.slice(2); // full frame
+    } else if (mode === 1) {
+      if (!prev) throw new Error('Need previous for diff mode');
+      const out = prev.slice();
+      let off = 2;
+      const { value: count, next } = this.readVarint(encoded, off); off = next;
+      for (let c = 0; c < count; c++) {
+        const idxRes = this.readVarint(encoded, off); off = idxRes.next;
+        const idx = idxRes.value;
+        out[idx] = encoded[off++];
+      }
+      return out;
+    } else if (mode === 2) {
+      // RLE full frame reconstruction
+      const values: number[] = [];
+      let off = 2;
+      while (off < encoded.length) {
+        const val = encoded[off++];
+        const { value: run, next } = this.readVarint(encoded, off); off = next;
+        for (let i = 0; i < run; i++) values.push(val);
+      }
+      return Uint8Array.from(values);
+    } else if (mode === 3) {
+      if (!prev) throw new Error('Need previous for dict mode');
+      let off = 2;
+      const dictRes = this.readVarint(encoded, off); off = dictRes.next;
+      const dictId = dictRes.value;
+      const countRes = this.readVarint(encoded, off); off = countRes.next;
+      const count = countRes.value;
+      const indices = this.diffDictIndices[dictId];
+      if (!indices || indices.length !== count) throw new Error('Dict mismatch');
+      const out = prev.slice();
+      for (let i = 0; i < count; i++) {
+        out[indices[i]] = encoded[off++];
+      }
+      return out;
+    }
+    throw new Error('Unknown diff mode');
+  }
+
+  private writeVarint(out: number[], value: number): void {
+    // 7-bit continuation varint
+    let v = value >>> 0;
+    while (v >= 0x80) { out.push((v & 0x7F) | 0x80); v >>>= 7; }
+    out.push(v);
+  }
+  private readVarint(buf: Uint8Array, offset: number): { value: number; next: number } {
+    let result = 0; let shift = 0; let pos = offset;
+    while (true) {
+      const b = buf[pos++];
+      result |= (b & 0x7F) << shift;
+      if ((b & 0x80) === 0) break;
+      shift += 7;
+    }
+    return { value: result >>> 0, next: pos };
+  }
+}
+
+// --- Example default fixed strings (edges of base cube in layer 0) ---------
+
+export function buildDefaultEdgeStrings(lattice: LayeredLattice8): void {
+  const layer = 0;
+  // 12 edges; we encode only 4 as sample to keep size modest
+  const edges: number[][] = [];
+  // X edges at y=0,z=0 ; y=7,z=0 ; y=0,z=7 ; y=7,z=7
+  const coords = [ [0,0,0],[0,7,0],[0,0,7],[0,7,7] ];
+  for (const [x0,y0,z0] of coords) {
+    const pts: number[] = [];
+    for (let x = 0; x < 8; x++) pts.push(lattice.pack(layer, x, y0, z0));
+    edges.push(pts);
+  }
+  edges.forEach(e => lattice.strings.addFixed(e));
+}
+
+// --- High-level update pipeline helper ------------------------------------
+
+export interface UpdateStepOptions {
+  diffusionIterations?: number;
+  learn?: boolean;
+  reinforce?: boolean;
+  decay?: boolean;
+}
+
+export function updateLattice(lattice: LayeredLattice8, prevFrame?: Uint8Array, step: UpdateStepOptions = {}) {
+  if (step.diffusionIterations) {
+    if (lattice['opts'].adaptiveDiffusion) lattice.diffuseAdaptive(step.diffusionIterations); else lattice.diffuse(step.diffusionIterations);
+  }
+  if (step.reinforce) lattice.reinforceStrings();
+  if (step.learn) { lattice.learnString(); lattice.learnStringPath(); }
+  if (step.decay) lattice.strings.decay();
+  const diff = lattice.diffEncode(prevFrame);
+  return diff;
+}
+
+// NOTE: Integration guidance: import { LayeredLattice8, buildDefaultEdgeStrings, updateLattice } from './layered-lattice';
+// Instantiate once, call updateLattice each frame / tick, broadcast diff over mesh.
+
+// Enable diff dictionary externally
+LayeredLattice8.prototype['enableDiffDictionary'] = function(this: LayeredLattice8, capacity = 64) {
+  (this as any).dictEnabled = true;
+  (this as any).diffDictCapacity = capacity;
+  return this;
+};
+
+/**
+ * Extract high-activation firing points (>= threshold) and return packed voxel indices.
+ * Intended to feed higher-level neural growth: each returned point can instantiate a new node.
+ */
+export function collectFiringPoints(lattice: LayeredLattice8, threshold = 200, limit = 128): number[] {
+  const res: number[] = [];
+  for (let i = 0; i < lattice.activation.length; i++) {
+    if (lattice.activation[i] >= threshold) {
+      res.push(i);
+      if (res.length >= limit) break;
+    }
+  }
+  return res;
+}
+
+/** Convert packed voxel index into a minimal node descriptor */
+export function firingPointToNodeSeed(lattice: LayeredLattice8, packed: number) {
+  const { layer,x,y,z } = lattice.unpack(packed);
+  return {
+    idHint: `fp_${layer}_${x}${y}${z}_${packed}`,
+    layer,
+    position: { x, y, z },
+    radial: layer,
+    localHash: (x + (y<<3) + (z<<6) + layer*512).toString(16)
+  };
+}
+C:\Users\jmwil\Downloads\assistant-smart-personal\src\lib\layered-lattice.ts

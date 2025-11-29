@@ -1,0 +1,230 @@
+/**
+ * High Fidelity Avatar Engine (Maya‑grade capability scaffold)
+ * -----------------------------------------------------------
+ * Utilities to prepare a Three.js scene for cinematic / holographic quality.
+ * Enhanced: procedural texture generation hooks, hologram dome, joint attachment API.
+ */
+import * as THREE from 'three';
+
+export interface AvatarEnvironmentSpec { cubeUrls?: string[]; hdrEquirectUrl?: string; exposure?: number; }
+export interface AvatarEngineInit { canvas: HTMLCanvasElement; width: number; height: number; modelUrl?: string; environment?: AvatarEnvironmentSpec; hologram?: boolean; proceduralSkin?: boolean; autoIK?: boolean; }
+export interface AvatarEngineHandle { scene: THREE.Scene; camera: THREE.PerspectiveCamera; renderer: THREE.WebGLRenderer; root: THREE.Group; joints: Record<string, THREE.Object3D>; addJointAnchor(name: string, position: THREE.Vector3): THREE.Object3D; setMetricIntensity(v: number): void; setAudioIntensity(v: number): void; dispose(): void; }
+export interface JointParticleEmitterConfig { jointName: string; color?: number; rate?: number; size?: number; }
+
+// IK & advanced systems additions
+interface TwoBoneIKChain { upper: THREE.Object3D; lower: THREE.Object3D; target: THREE.Object3D; lengthUpper: number; lengthLower: number; }
+// GPU particle system config
+interface GPUParticleSystem { mesh: THREE.Points; life: Float32Array; velocity: Float32Array; }
+// Audio analyzer
+let audioAnalyzer: { analyser: AnalyserNode; data: Uint8Array } | null = null;
+
+// Utility: approximate length between two joints
+function jointDistance(a: THREE.Object3D, b: THREE.Object3D){ return a.getWorldPosition(new THREE.Vector3()).distanceTo(b.getWorldPosition(new THREE.Vector3())); }
+
+export async function initHighFidelityAvatar(opts: AvatarEngineInit): Promise<AvatarEngineHandle> {
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, opts.width / opts.height, 0.1, 1500);
+  camera.position.set(0, 1.5, 4);
+  const renderer = new THREE.WebGLRenderer({ canvas: opts.canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+  renderer.setSize(opts.width, opts.height); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = opts.environment?.exposure ?? 1.2; renderer.outputColorSpace = (THREE as any).SRGBColorSpace || THREE.ColorSpaceSRGB; (renderer as any).physicallyCorrectLights = true;
+
+  // Lighting rig
+  scene.add(new THREE.AmbientLight(0x404040, 0.4));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(5,10,5); key.castShadow = true; key.shadow.mapSize.set(4096,4096); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x88ccff, 0.9); fill.position.set(-3,5,3); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xaaffff, 1.2); rim.position.set(0,3,-5); scene.add(rim);
+
+  // Environment
+  if (opts.environment?.cubeUrls?.length === 6) {
+    new THREE.CubeTextureLoader().load(opts.environment.cubeUrls, tex => { (tex as any).colorSpace = (THREE as any).SRGBColorSpace; scene.environment = tex; });
+  } else if (opts.environment?.hdrEquirectUrl) {
+    try { const { RGBELoader } = await import('three/examples/jsm/loaders/RGBELoader.js'); new RGBELoader().load(opts.environment.hdrEquirectUrl, tex => { tex.mapping = THREE.EquirectangularReflectionMapping; scene.environment = tex; }); } catch (e) { console.warn('[AvatarEngine] HDR load failed', e); }
+  }
+  const root = new THREE.Group(); scene.add(root);
+  const joints: Record<string, THREE.Object3D> = {};
+  function addJointAnchor(name: string, position: THREE.Vector3) { const anchor = new THREE.Object3D(); anchor.position.copy(position); joints[name] = anchor; root.add(anchor); return anchor; }
+  // Optional hologram dome
+  if (opts.hologram) {
+    const geo = new THREE.SphereGeometry(6, 64, 64, 0, Math.PI * 2, 0, Math.PI/2);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x06d9ff, wireframe: true, transparent: true, opacity: 0.15 });
+    const dome = new THREE.Mesh(geo, mat); dome.rotation.x = -Math.PI/2; root.add(dome);
+    // rotating arcs
+    for (let i=0;i<3;i++){ const ringG = new THREE.TorusGeometry(3.5 + i*0.3, 0.01, 8, 256); const ringM = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.25 }); const ring = new THREE.Mesh(ringG, ringM); ring.rotation.x = i * 0.7; root.add(ring); }
+  }
+  // Dual-channel holographic skin (metric = cyan channel, audio = magenta channel)
+  let proceduralMat: THREE.ShaderMaterial | undefined;
+  let uMetricIntensity = { value: 0.3 }; let uAudioIntensity = { value: 0.3 }; let uTime = { value: 0 };
+  if (opts.proceduralSkin) {
+    proceduralMat = new THREE.ShaderMaterial({
+      uniforms: { uTime, uMetricIntensity, uAudioIntensity },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      vertexShader: `varying vec3 vPos; void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `uniform float uTime; uniform float uMetricIntensity; uniform float uAudioIntensity; varying vec3 vPos; void main(){ float d=length(vPos); float base=sin(uTime*2.0 + d*6.0)*0.5+0.5; float fall=smoothstep(1.2,0.1,d); vec3 metricCol = vec3(0.0,0.9,1.0)*uMetricIntensity*base; vec3 audioCol = vec3(1.0,0.0,0.9)*uAudioIntensity*(0.6+0.4*base); vec3 col = metricCol + audioCol; float alpha = fall * clamp(uMetricIntensity+uAudioIntensity,0.0,1.2); gl_FragColor = vec4(col, alpha); }`
+    });
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(1.05, 96, 96), proceduralMat); root.add(shell);
+  }
+  if (opts.modelUrl) {
+    try { const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js'); const loader = new GLTFLoader(); loader.load(opts.modelUrl, (gltf) => { root.add(gltf.scene); gltf.scene.traverse((o:any) => { if (o.isBone) joints[o.name] = o; if (o.isMesh){ o.castShadow = true; o.receiveShadow = true; } }); if (opts.autoIK) autoDetectLimbIK(); }, undefined, (err) => console.warn('[AvatarEngine] GLTF load error', err)); } catch (e) { console.warn('[AvatarEngine] GLTFLoader missing', e); }
+  }
+  const particleSystems: { joint: string; points: THREE.Points; vel: Float32Array; life: Float32Array; cfg: JointParticleEmitterConfig; }[] = [];
+  function addJointParticleEmitter(cfg: JointParticleEmitterConfig) {
+    const joint = joints[cfg.jointName]; if (!joint) return;
+    const count = 128;
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count*3);
+    const vel = new Float32Array(count*3);
+    const life = new Float32Array(count);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    const mat = new THREE.PointsMaterial({ color: cfg.color ?? 0x00ffff, size: cfg.size ?? 0.04, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+    const pts = new THREE.Points(geo, mat); joint.add(pts);
+    for (let i=0;i<count;i++){ life[i]=Math.random()*2; }
+    particleSystems.push({ joint: cfg.jointName, points: pts, vel, life, cfg });
+  }
+  // update loop extension
+  function updateParticles(dt: number) {
+    for (const sys of particleSystems) {
+      const geo = sys.points.geometry as THREE.BufferGeometry;
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      for (let i=0;i<pos.count;i++){
+        const idx=i*3;
+        sys.life[i]-=dt; if (sys.life[i]<=0){
+          // respawn
+          pos.array[idx]= (Math.random()-0.5)*0.05;
+          pos.array[idx+1]= (Math.random()-0.5)*0.05;
+          pos.array[idx+2]= (Math.random()-0.5)*0.05;
+          sys.vel[idx]= (Math.random()-0.5)*0.02;
+          sys.vel[idx+1]= Math.random()*0.05;
+          sys.vel[idx+2]= (Math.random()-0.5)*0.02;
+          sys.life[i]= 1.5 + Math.random()*1.5;
+        } else {
+          pos.array[idx]+=sys.vel[idx]; pos.array[idx+1]+=sys.vel[idx+1]; pos.array[idx+2]+=sys.vel[idx+2];
+        }
+      }
+      pos.needsUpdate = true;
+    }
+  }
+  // augment existing update loop by wrapping core procedural updates (time & small particle system)
+  let start = performance.now();
+  function baseUpdate() { const now = performance.now(); const t = (now - start)/1000; const dt = 1/60; if (proceduralMat){ uTime.value = t; } updateParticles(dt); requestAnimationFrame(baseUpdate); }
+  baseUpdate();
+  const twoBoneChains: TwoBoneIKChain[] = [];
+  const gpuParticles: GPUParticleSystem[] = [];
+  function addTwoBoneIK(upperName: string, lowerName: string, target: THREE.Object3D){
+    const upper = joints[upperName]; const lower = joints[lowerName]; if(!upper||!lower) return;
+    const lenUpper = jointDistance(upper, lower); // approximate
+    const end = new THREE.Object3D(); lower.add(end); end.position.set(0,-0.3,0); // placeholder end effector
+    const lenLower = jointDistance(lower, end) || 0.3;
+    twoBoneChains.push({ upper, lower, target, lengthUpper: lenUpper, lengthLower: lenLower });
+  }
+  function autoDetectLimbIK(){
+    const limbPatterns: [string, string, string][] = [
+      ['UpperArm', 'LowerArm', 'Hand'],
+      ['Shoulder', 'Elbow', 'Wrist'],
+      ['Thigh', 'Calf', 'Foot'],
+      ['UpperLeg', 'LowerLeg', 'Foot']
+    ];
+    limbPatterns.forEach(([a,b,c])=>{
+      const upper = Object.keys(joints).find(n=>n.includes(a));
+      const lower = Object.keys(joints).find(n=>n.includes(b));
+      const end = Object.keys(joints).find(n=>n.includes(c));
+      if (upper && lower && end){ addTwoBoneIK(upper, lower, joints[end]); }
+    });
+  }
+  function solveTwoBone(chain: TwoBoneIKChain){
+    const rootPos = chain.upper.getWorldPosition(new THREE.Vector3());
+    const jointPos = chain.lower.getWorldPosition(new THREE.Vector3());
+    const targetPos = chain.target.getWorldPosition(new THREE.Vector3());
+    const dirRootToTarget = targetPos.clone().sub(rootPos);
+    const dist = dirRootToTarget.length();
+    const a = chain.lengthUpper; const b = chain.lengthLower; const clampDist = Math.min(Math.max(dist, Math.abs(a-b)+1e-3), a+b-1e-3);
+    const cosAngle = (a*a + b*b - clampDist*clampDist)/(2*a*b);
+    const elbowAngle = Math.acos(Math.min(1, Math.max(-1, cosAngle)));
+    // Pole vector: derive preferred bend plane using current joint position
+    const toJoint = jointPos.clone().sub(rootPos).normalize();
+    const toTarget = dirRootToTarget.clone().normalize();
+    let pole = new THREE.Vector3().crossVectors(toJoint, toTarget);
+    if (pole.lengthSq() < 1e-5) pole = new THREE.Vector3(0,1,0); // fallback
+    const planeNormal = new THREE.Vector3().crossVectors(pole, toTarget).normalize();
+    // Orient upper bone toward target within plane
+    const q = new THREE.Quaternion();
+    q.setFromUnitVectors(new THREE.Vector3(0,1,0), toTarget.clone().normalize());
+    chain.upper.quaternion.copy(q);
+    // Rotate around to align pole
+    chain.upper.rotateOnAxis(toTarget, 0);
+    // Apply elbow bend by rotating lower at joint
+    chain.lower.quaternion.copy(chain.upper.quaternion);
+    chain.lower.rotateOnAxis(pole.normalize(), Math.PI - elbowAngle);
+  }
+  function addGPUParticleField(count = 2000){
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count*3);
+    const life = new Float32Array(count);
+    const velocity = new Float32Array(count*3);
+    for (let i=0;i<count;i++){
+      const r = Math.random()*2.5+0.5; const th = Math.random()*Math.PI*2; const ph = Math.acos(2*Math.random()-1);
+      pos[i*3] = r*Math.sin(ph)*Math.cos(th);
+      pos[i*3+1] = r*Math.cos(ph);
+      pos[i*3+2] = r*Math.sin(ph)*Math.sin(th);
+      life[i] = Math.random()*3;
+      velocity[i*3] = (Math.random()-0.5)*0.01;
+      velocity[i*3+1] = (Math.random()-0.5)*0.01;
+      velocity[i*3+2] = (Math.random()-0.5)*0.01;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('aLife', new THREE.BufferAttribute(life,1));
+    const mat = new THREE.PointsMaterial({ color: 0x00ddee, size: 0.025, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Points(geo, mat); root.add(mesh);
+    gpuParticles.push({ mesh, life, velocity });
+  }
+  async function enableAudioReactive(){
+    if (audioAnalyzer) return audioAnalyzer;
+    if (!(navigator as any).mediaDevices) return null;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser(); analyser.fftSize = 256;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    audioAnalyzer = { analyser, data };
+    return audioAnalyzer;
+  }
+  // extend proceduralMat uniforms for audio if present
+  function updateAudio(){ if (audioAnalyzer && proceduralMat){ const analyser = audioAnalyzer.analyser; const buf = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(buf); let sum=0; for (let i=0;i<buf.length;i++) sum+=buf[i]; const lvl = sum/(buf.length*255); uAudioIntensity.value = 0.15 + lvl*0.85; } }
+  // augment original update loop (already replaced earlier) -> wrap existing update: redefine update with IK + GPU particles + audio
+  // NOTE: we override previously declared update by simply redefining here after its creation earlier in file.
+  const originalUpdate = (globalThis as any).__avatarEngineUpdate;
+  let lastTime = performance.now();
+  function masterUpdate(){
+    const now = performance.now(); const dt = (now - lastTime)/1000; lastTime = now;
+    // intensity decay toward baseline
+    const baselineMetric = 0.3, baselineAudio = 0.3; const decay = 0.5; // per second
+    uMetricIntensity.value += (baselineMetric - uMetricIntensity.value)*Math.min(1, decay*dt);
+    uAudioIntensity.value += (baselineAudio - uAudioIntensity.value)*Math.min(1, decay*dt);
+    // Solve IK chains
+    twoBoneChains.forEach(solveTwoBone);
+    // GPU particle evolve (CPU side minimal)
+    for (const sys of gpuParticles){ const geo = sys.mesh.geometry as THREE.BufferGeometry; const posAttr = geo.getAttribute('position') as THREE.BufferAttribute; for (let i=0;i<posAttr.count;i++){ const idx=i*3; posAttr.array[idx]+=sys.velocity[idx]; posAttr.array[idx+1]+=sys.velocity[idx+1]; posAttr.array[idx+2]+=sys.velocity[idx+2]; sys.life[i]-=dt; if (sys.life[i]<=0){ posAttr.array[idx]=(Math.random()-0.5)*0.5; posAttr.array[idx+1]=(Math.random()-0.5)*0.5; posAttr.array[idx+2]=(Math.random()-0.5)*0.5; sys.life[i]=Math.random()*3; } } posAttr.needsUpdate = true; }
+    updateAudio();
+    requestAnimationFrame(masterUpdate);
+  }
+  (globalThis as any).__avatarEngineUpdate = masterUpdate;
+  requestAnimationFrame(masterUpdate);
+  // expose new API
+  const handle: AvatarEngineHandle & any = {
+    scene,
+    camera,
+    renderer,
+    root,
+    joints,
+    addJointAnchor,
+  setMetricIntensity(v: number){ uMetricIntensity.value = v; },
+  setAudioIntensity(v: number){ uAudioIntensity.value = v; },
+    dispose(){ renderer.dispose(); },
+    addJointParticleEmitter,
+    addTwoBoneIK,
+    addGPUParticleField,
+    enableAudioReactive
+  };
+  return handle;
+}

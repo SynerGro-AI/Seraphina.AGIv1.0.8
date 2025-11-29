@@ -1,0 +1,1299 @@
+/**
+ * Seraphina.AI Advanced Language Engine
+ * 16-Language Multi-Modal Processing System
+ * OCTABIT Encryption Integrated
+ * Neural Mesh Compatible
+ * Version: MASTER-8.0.1
+ *
+ * Enhancement (Octagramal Spiral + Roman Code Wheel Integration):
+ *  - Adds RomanCodeWheel for golden-ratio (φ) spiral electron spin style rotations
+ *  - Replaces legacy linear OctaLang processing with wheel-encoded lattice/node/function/quantum op parsing
+ *  - Produces aggregate_electron_spin hash suitable for downstream nonce biasing in mining / optimization layers
+ */
+
+// Roman Code Wheel Backend Coder - Octagramal Spiral for Electron Interaction
+class RomanCodeWheel {
+    constructor() {
+        this.spiral_ratio = 1.618;              // Golden φ for logarithmic spiral
+        this.octa_planes = 8;                   // Octagramal spokes
+        this.wheel_angles = Array.from({ length: this.octa_planes }, (_, i) => (i * 45) * Math.PI / 180); // Base angles (rad)
+        this.octa_freq = 963;                   // Base frequency reference (Hz)
+    }
+
+    // Simple stable 32-bit hash for objects/strings
+    generateHash(obj) {
+        const s = typeof obj === 'string' ? obj : JSON.stringify(obj);
+        let h = 0; for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+        return h >>> 0; // unsigned 32-bit
+    }
+
+    // Spiral Rotation for Electron Spin (Nonce / Structure Encoding)
+    rotateForElectrons(input, planes = this.octa_planes) {
+        let rotated = (input >>> 0);
+        for (let plane = 0; plane < planes; plane++) {
+            const spiral_phase = Math.pow(this.spiral_ratio, plane) * this.wheel_angles[plane];
+            const freq_shift = Math.floor(this.octa_freq * spiral_phase) & 0xFF; // Phase to byte
+            rotated = ((rotated << (plane + 1)) | (rotated >>> (32 - (plane + 1)))) ^ freq_shift; // rotl + xor
+        }
+        return rotated >>> 0;
+    }
+
+    // Encode OctaLang structure via spiral wheel
+    encodeOctaStructure(structure, context_freq = this.octa_freq) {
+        const baseHash = (typeof structure.hash === 'number') ? structure.hash : this.generateHash(structure);
+        const encoded = this.rotateForElectrons(baseHash, this.octa_planes);
+        return {
+            ...structure,
+            wheel_encoded: encoded.toString(16),
+            spiral_phase: context_freq * this.spiral_ratio,
+            electron_spin: 'entangled'
+        };
+    }
+}
+
+class AdvancedLanguageEngine {
+    constructor() {
+        this.engineId = 'LANGUAGE_ENGINE_MASTER_8.0.1';
+        this.version = 'MASTER-8.0.1';
+        this.status = 'initializing';
+        // Roman Code Wheel integration
+        this.romanWheelCoder = new RomanCodeWheel();
+        
+        // 16 Natural Languages + Programming Languages
+        this.supportedLanguages = {
+            // Natural Languages
+            natural: {
+                'en-US': { name: 'English (US)', flag: '🇺🇸', voice: 'en-US-AriaNeural', frequency: 440.0 },
+                'es-ES': { name: 'Spanish', flag: '🇪🇸', voice: 'es-ES-ElviraNeural', frequency: 493.88 },
+                'fr-FR': { name: 'French', flag: '🇫🇷', voice: 'fr-FR-DeniseNeural', frequency: 523.25 },
+                'de-DE': { name: 'German', flag: '🇩🇪', voice: 'de-DE-KatjaNeural', frequency: 587.33 },
+                'it-IT': { name: 'Italian', flag: '🇮🇹', voice: 'it-IT-ElsaNeural', frequency: 659.25 },
+                'pt-BR': { name: 'Portuguese', flag: '🇧🇷', voice: 'pt-BR-FranciscaNeural', frequency: 698.46 },
+                'ru-RU': { name: 'Russian', flag: '🇷🇺', voice: 'ru-RU-SvetlanaNeural', frequency: 783.99 },
+                'ja-JP': { name: 'Japanese', flag: '🇯🇵', voice: 'ja-JP-NanamiNeural', frequency: 880.0 },
+                'zh-CN': { name: 'Chinese (Simplified)', flag: '🇨🇳', voice: 'zh-CN-XiaoxiaoNeural', frequency: 987.77 },
+                'ko-KR': { name: 'Korean', flag: '🇰🇷', voice: 'ko-KR-SunHiNeural', frequency: 1046.50 },
+                'ar-SA': { name: 'Arabic', flag: '🇸🇦', voice: 'ar-SA-ZariyahNeural', frequency: 1174.66 },
+                'hi-IN': { name: 'Hindi', flag: '🇮🇳', voice: 'hi-IN-SwaraNeural', frequency: 1318.51 },
+                'tr-TR': { name: 'Turkish', flag: '🇹🇷', voice: 'tr-TR-EmelNeural', frequency: 1396.91 },
+                'th-TH': { name: 'Thai', flag: '🇹🇭', voice: 'th-TH-AcharaNeural', frequency: 1567.98 },
+                'vi-VN': { name: 'Vietnamese', flag: '🇻🇳', voice: 'vi-VN-HoaiMyNeural', frequency: 1760.0 },
+                'nl-NL': { name: 'Dutch', flag: '🇳🇱', voice: 'nl-NL-ColetteNeural', frequency: 1975.53 }
+            },
+            // Programming Languages
+            programming: {
+                'JavaScript': { extension: '.js', syntax: 'C-style', frequency: 432.0 },
+                'Python': { extension: '.py', syntax: 'indented', frequency: 458.0 },
+                'Java': { extension: '.java', syntax: 'C-style', frequency: 484.0 },
+                'C++': { extension: '.cpp', syntax: 'C-style', frequency: 512.0 },
+                'C#': { extension: '.cs', syntax: 'C-style', frequency: 542.0 },
+                'Go': { extension: '.go', syntax: 'C-style', frequency: 574.0 },
+                'Rust': { extension: '.rs', syntax: 'C-style', frequency: 608.0 },
+                'TypeScript': { extension: '.ts', syntax: 'C-style', frequency: 645.0 },
+                'Ruby': { extension: '.rb', syntax: 'ruby', frequency: 683.0 },
+                'PHP': { extension: '.php', syntax: 'C-style', frequency: 724.0 },
+                'Swift': { extension: '.swift', syntax: 'swift', frequency: 767.0 },
+                'Kotlin': { extension: '.kt', syntax: 'C-style', frequency: 813.0 },
+                'Scala': { extension: '.scala', syntax: 'functional', frequency: 861.0 },
+                'Haskell': { extension: '.hs', syntax: 'functional', frequency: 912.0 },
+                'Clojure': { extension: '.clj', syntax: 'lisp', frequency: 967.0 },
+                'Elixir': { extension: '.ex', syntax: 'functional', frequency: 1025.0 },
+                'GRBL': { extension: '.gcode', syntax: 'gcode', frequency: 1084.0 },
+                'Fernet': { extension: '.fernet', syntax: 'encrypted', frequency: 1147.0 },
+                'OctaLang': { extension: '.octa', syntax: 'lattice', frequency: 1213.0 }
+            }
+        };
+        
+        // OCTABIT Encryption System
+        this.octabitEncryption = {
+            enabled: true,
+            encryption_key: this.generateOctabitKey(),
+            quantum_salt: this.generateQuantumSalt(),
+            frequency_cipher: new Map(),
+            encrypted_channels: new Set(),
+            mesh_integration: true
+        };
+        
+        // Neural Processing Pipeline
+        this.neuralPipeline = {
+            input_layer: new Map(),      // Language detection & preprocessing
+            translation_layer: new Map(), // Cross-language translation
+            synthesis_layer: new Map(),   // Voice synthesis
+            analysis_layer: new Map(),    // Sentiment & context analysis
+            output_layer: new Map(),      // Formatted output
+            feedback_layer: new Map()     // Learning feedback
+        };
+        
+        // Language Detection AI
+        this.languageDetector = {
+            confidence_threshold: 0.85,
+            auto_detect_enabled: true,
+            context_memory: new Map(),
+            pattern_recognition: new Map(),
+            frequency_analysis: new Map()
+        };
+        
+        // Translation Engine
+        this.translationEngine = {
+            active_translators: new Map(),
+            translation_cache: new Map(),
+            quality_metrics: new Map(),
+            context_preservation: true,
+            cultural_adaptation: true
+        };
+        
+        // Voice Synthesis Engine
+        this.voiceSynthesis = {
+            active_voices: new Map(),
+            voice_settings: {
+                speed: 1.0,
+                pitch: 1.0,
+                volume: 0.8,
+                emotion: 'neutral'
+            },
+            neural_voices: new Set(),
+            voice_cloning: false
+        };
+        
+        // Conversation Context
+        this.conversationContext = {
+            active_sessions: new Map(),
+            history_retention: 1000, // messages
+            context_analysis: new Map(),
+            personality_adaptation: new Map(),
+            learning_patterns: new Map()
+        };
+        
+        try { this.WheelBackendCoder = require('./wheel-backend-coder.js'); this.wheelCoder = new this.WheelBackendCoder(); console.log('🧲 Wheel Backend Coder attached'); } catch(e){ console.warn('WheelBackendCoder unavailable:', e.message); }
+        
+        console.log('🌍 Advanced Language Engine - Initializing 16-Language System');
+        console.log('🔐 OCTABIT Encryption - Integration Active');
+        this.initialize();
+    }
+
+    async initialize() {
+        console.log('🌍 Initializing Advanced Language Engine...');
+        console.log('📚 Loading 16 Natural Languages + 16 Programming Languages');
+        
+        // Initialize OCTABIT encryption
+        await this.initializeOctabitEncryption();
+        
+        // Initialize neural processing pipeline
+        await this.initializeNeuralPipeline();
+        
+        // Initialize language detection
+        await this.initializeLanguageDetector();
+        
+        // Initialize translation engine
+        await this.initializeTranslationEngine();
+        
+        // Initialize voice synthesis
+        await this.initializeVoiceSynthesis();
+        
+        // Start language processing services
+        this.startLanguageProcessing();
+        
+        this.status = 'active';
+        console.log('✅ Language Engine Online - 32 Languages Ready');
+        console.log('🔐 OCTABIT Encryption Active');
+        console.log('🧠 Neural Pipeline Processing Started');
+    }
+
+    async initializeOctabitEncryption() {
+        console.log('🔐 Initializing OCTABIT Encryption for Language Processing...');
+        
+        // Generate frequency-based encryption keys for each language
+        Object.entries(this.supportedLanguages.natural).forEach(([langCode, langData]) => {
+            const frequencyKey = this.generateFrequencyEncryptionKey(langData.frequency);
+            this.octabitEncryption.frequency_cipher.set(langCode, {
+                base_frequency: langData.frequency,
+                encryption_key: frequencyKey,
+                quantum_signature: this.generateQuantumSignature(frequencyKey),
+                octabit_level: 3 // High security
+            });
+        });
+        
+        // Generate encryption for programming languages
+        Object.entries(this.supportedLanguages.programming).forEach(([langName, langData]) => {
+            const frequencyKey = this.generateFrequencyEncryptionKey(langData.frequency);
+            this.octabitEncryption.frequency_cipher.set(langName, {
+                base_frequency: langData.frequency,
+                encryption_key: frequencyKey,
+                quantum_signature: this.generateQuantumSignature(frequencyKey),
+                octabit_level: 2 // Medium security for code
+            });
+        });
+        
+        console.log(`✅ OCTABIT Encryption initialized for ${this.octabitEncryption.frequency_cipher.size} languages`);
+    }
+
+    async initializeNeuralPipeline() {
+        console.log('🧠 Initializing Neural Processing Pipeline...');
+        
+        // Input Layer - Language detection and preprocessing
+        this.neuralPipeline.input_layer.set('language_detection', {
+            processor: this.detectLanguage.bind(this),
+            confidence_threshold: this.languageDetector.confidence_threshold,
+            preprocessing: true
+        });
+        
+        this.neuralPipeline.input_layer.set('text_preprocessing', {
+            processor: this.preprocessText.bind(this),
+            cleanup: true,
+            normalization: true
+        });
+        
+        // Translation Layer
+        this.neuralPipeline.translation_layer.set('context_translation', {
+            processor: this.translateWithContext.bind(this),
+            context_preservation: true,
+            cultural_adaptation: true
+        });
+        
+        // Synthesis Layer
+        this.neuralPipeline.synthesis_layer.set('voice_synthesis', {
+            processor: this.synthesizeVoice.bind(this),
+            neural_voices: true,
+            emotion_modulation: true
+        });
+        
+        // Analysis Layer
+        this.neuralPipeline.analysis_layer.set('sentiment_analysis', {
+            processor: this.analyzeSentiment.bind(this),
+            emotion_detection: true,
+            context_analysis: true
+        });
+        
+        // Output Layer
+        this.neuralPipeline.output_layer.set('response_formatting', {
+            processor: this.formatResponse.bind(this),
+            personalization: true,
+            adaptation: true
+        });
+        
+        console.log('✅ Neural Processing Pipeline Initialized');
+    }
+
+    async initializeLanguageDetector() {
+        console.log('🔍 Initializing Language Detection AI...');
+        
+        // Pattern recognition for natural languages
+        Object.entries(this.supportedLanguages.natural).forEach(([langCode, langData]) => {
+            this.languageDetector.pattern_recognition.set(langCode, {
+                common_words: this.getCommonWords(langCode),
+                character_patterns: this.getCharacterPatterns(langCode),
+                grammar_markers: this.getGrammarMarkers(langCode),
+                frequency_signature: langData.frequency
+            });
+        });
+        
+        // Pattern recognition for programming languages
+        Object.entries(this.supportedLanguages.programming).forEach(([langName, langData]) => {
+            this.languageDetector.pattern_recognition.set(langName, {
+                keywords: this.getProgrammingKeywords(langName),
+                syntax_patterns: this.getSyntaxPatterns(langName),
+                structure_markers: this.getStructureMarkers(langName),
+                frequency_signature: langData.frequency
+            });
+        });
+        
+        console.log('✅ Language Detection AI Ready');
+    }
+
+    async initializeTranslationEngine() {
+        console.log('🔄 Initializing Translation Engine...');
+        
+        // Initialize translators for each language pair
+        const naturalLangs = Object.keys(this.supportedLanguages.natural);
+        
+        naturalLangs.forEach(sourceLang => {
+            naturalLangs.forEach(targetLang => {
+                if (sourceLang !== targetLang) {
+                    const pairKey = `${sourceLang}->${targetLang}`;
+                    this.translationEngine.active_translators.set(pairKey, {
+                        source: sourceLang,
+                        target: targetLang,
+                        quality_score: this.calculateTranslationQuality(sourceLang, targetLang),
+                        context_engine: true,
+                        cultural_adaptation: true
+                    });
+                }
+            });
+        });
+        
+        console.log(`✅ Translation Engine Ready - ${this.translationEngine.active_translators.size} translation pairs`);
+    }
+
+    async initializeVoiceSynthesis() {
+        console.log('🎤 Initializing Voice Synthesis Engine...');
+        
+        // Initialize neural voices for each language
+        Object.entries(this.supportedLanguages.natural).forEach(([langCode, langData]) => {
+            this.voiceSynthesis.active_voices.set(langCode, {
+                voice_name: langData.voice,
+                language: langData.name,
+                neural_enabled: true,
+                frequency: langData.frequency,
+                emotion_modulation: true,
+                personality_adaptation: true
+            });
+            
+            // Add to neural voices set
+            this.voiceSynthesis.neural_voices.add(langCode);
+        });
+        
+        console.log(`✅ Voice Synthesis Ready - ${this.voiceSynthesis.active_voices.size} neural voices`);
+    }
+
+    // Main Language Processing API
+    async processLanguage(input, options = {}) {
+        const {
+            source_language = 'auto-detect',
+            target_language = 'en-US',
+            processing_mode = 'full', // 'full', 'translate', 'detect', 'synthesize'
+            encryption_enabled = true,
+            context_id = null,
+            voice_synthesis = false
+        } = options;
+
+        console.log(`🌍 Processing language input (${processing_mode} mode)...`);
+
+        const processingResult = {
+            input: input,
+            detected_language: null,
+            translated_content: null,
+            synthesized_audio: null,
+            sentiment_analysis: null,
+            context_analysis: null,
+            encrypted: false,
+            processing_time: 0,
+            quality_score: 0
+        };
+
+        const startTime = Date.now();
+
+        try {
+            // Step 1: Language Detection (if auto-detect)
+            if (source_language === 'auto-detect') {
+                processingResult.detected_language = await this.detectLanguage(input);
+                console.log(`🔍 Detected: ${processingResult.detected_language.language} (${processingResult.detected_language.confidence})`);
+            } else {
+                processingResult.detected_language = {
+                    language: source_language,
+                    confidence: 1.0,
+                    type: this.getLanguageType(source_language)
+                };
+            }
+
+            // Step 2: OCTABIT Encryption (if enabled)
+            let processedInput = input;
+            if (encryption_enabled && this.octabitEncryption.enabled) {
+                processedInput = await this.encryptWithOctabit(input, processingResult.detected_language.language);
+                processingResult.encrypted = true;
+            }
+
+            // Step 3: Translation (if needed)
+            if (target_language !== processingResult.detected_language.language) {
+                processingResult.translated_content = await this.translateWithContext(
+                    processedInput,
+                    processingResult.detected_language.language,
+                    target_language,
+                    context_id
+                );
+            }
+
+            // Step 4: Voice Synthesis (if requested)
+            if (voice_synthesis) {
+                const textToSynthesize = processingResult.translated_content?.text || processedInput;
+                processingResult.synthesized_audio = await this.synthesizeVoice(
+                    textToSynthesize,
+                    target_language
+                );
+            }
+
+            // Step 5: Analysis (in full mode)
+            if (processing_mode === 'full') {
+                processingResult.sentiment_analysis = await this.analyzeSentiment(
+                    processingResult.translated_content?.text || processedInput
+                );
+                
+                processingResult.context_analysis = await this.analyzeContext(
+                    processingResult.translated_content?.text || processedInput,
+                    context_id
+                );
+            }
+
+            // Calculate processing metrics
+            processingResult.processing_time = Date.now() - startTime;
+            processingResult.quality_score = this.calculateQualityScore(processingResult);
+
+            console.log(`✅ Language processing complete (${processingResult.processing_time}ms)`);
+            return processingResult;
+
+        } catch (error) {
+            console.error('❌ Language processing error:', error);
+            throw error;
+        }
+    }
+
+    // Language Detection
+    async detectLanguage(text) {
+        const detectionResults = [];
+
+        // Check natural languages
+        Object.entries(this.supportedLanguages.natural).forEach(([langCode, langData]) => {
+            const patterns = this.languageDetector.pattern_recognition.get(langCode);
+            if (patterns) {
+                const confidence = this.calculateLanguageConfidence(text, patterns);
+                if (confidence > 0.1) {
+                    detectionResults.push({
+                        language: langCode,
+                        type: 'natural',
+                        confidence: confidence,
+                        frequency: langData.frequency
+                    });
+                }
+            }
+        });
+
+        // Check programming languages
+        Object.entries(this.supportedLanguages.programming).forEach(([langName, langData]) => {
+            const patterns = this.languageDetector.pattern_recognition.get(langName);
+            if (patterns) {
+                const confidence = this.calculateLanguageConfidence(text, patterns);
+                if (confidence > 0.1) {
+                    detectionResults.push({
+                        language: langName,
+                        type: 'programming',
+                        confidence: confidence,
+                        frequency: langData.frequency
+                    });
+                }
+            }
+        });
+
+        // Sort by confidence and return best match
+        detectionResults.sort((a, b) => b.confidence - a.confidence);
+        
+        if (detectionResults.length > 0) {
+            return detectionResults[0];
+        }
+
+        // Fallback to English
+        return {
+            language: 'en-US',
+            type: 'natural',
+            confidence: 0.5,
+            frequency: 440.0
+        };
+    }
+
+    // Translation with Context
+    async translateWithContext(text, sourceLang, targetLang, contextId = null) {
+        const translationKey = `${sourceLang}->${targetLang}`;
+        const translator = this.translationEngine.active_translators.get(translationKey);
+
+        if (!translator) {
+            return {
+                text: text, // No translation available
+                confidence: 0.0,
+                source_language: sourceLang,
+                target_language: targetLang,
+                context_preserved: false
+            };
+        }
+
+        // Get context from conversation history
+        let conversationContext = null;
+        if (contextId) {
+            conversationContext = this.conversationContext.active_sessions.get(contextId);
+        }
+
+        // Simulate sophisticated translation
+        const translatedText = await this.performTranslation(text, sourceLang, targetLang, conversationContext);
+
+        return {
+            text: translatedText,
+            confidence: translator.quality_score,
+            source_language: sourceLang,
+            target_language: targetLang,
+            context_preserved: translator.context_engine,
+            cultural_adaptation: translator.cultural_adaptation
+        };
+    }
+
+    // Voice Synthesis
+    async synthesizeVoice(text, language) {
+        const voiceConfig = this.voiceSynthesis.active_voices.get(language);
+        
+        if (!voiceConfig) {
+            throw new Error(`Voice synthesis not available for language: ${language}`);
+        }
+
+        return {
+            audio_url: `data:audio/mp3;base64,${this.generateAudioData(text, voiceConfig)}`,
+            voice_name: voiceConfig.voice_name,
+            language: language,
+            duration: this.estimateAudioDuration(text),
+            frequency: voiceConfig.frequency,
+            neural_enhanced: voiceConfig.neural_enabled
+        };
+    }
+
+    // Sentiment Analysis
+    async analyzeSentiment(text) {
+        // Sophisticated sentiment analysis
+        const sentimentMetrics = {
+            polarity: this.calculatePolarity(text),
+            emotion: this.detectEmotion(text),
+            intensity: this.calculateIntensity(text),
+            confidence: this.calculateSentimentConfidence(text)
+        };
+
+        return {
+            sentiment: this.categorizeSentiment(sentimentMetrics.polarity),
+            emotion: sentimentMetrics.emotion,
+            intensity: sentimentMetrics.intensity,
+            confidence: sentimentMetrics.confidence,
+            metrics: sentimentMetrics
+        };
+    }
+
+    // Context Analysis
+    async analyzeContext(text, contextId) {
+        const contextAnalysis = {
+            topic_analysis: this.extractTopics(text),
+            intent_detection: this.detectIntent(text),
+            entity_extraction: this.extractEntities(text),
+            conversation_flow: null
+        };
+
+        if (contextId) {
+            const conversationHistory = this.conversationContext.active_sessions.get(contextId);
+            if (conversationHistory) {
+                contextAnalysis.conversation_flow = this.analyzeConversationFlow(text, conversationHistory);
+            }
+        }
+
+        return contextAnalysis;
+    }
+
+    // OCTABIT Encryption Methods
+    async encryptWithOctabit(text, language) {
+        const languageCipher = this.octabitEncryption.frequency_cipher.get(language);
+        
+        if (!languageCipher) {
+            console.warn(`No OCTABIT cipher for language: ${language}`);
+            return text;
+        }
+
+        // Frequency-based encryption using language-specific keys
+        const encrypted = this.applyFrequencyEncryption(text, languageCipher);
+        
+        console.log(`🔐 Text encrypted with OCTABIT (${language})`);
+        return encrypted;
+    }
+
+    async decryptWithOctabit(encryptedText, language) {
+        const languageCipher = this.octabitEncryption.frequency_cipher.get(language);
+        
+        if (!languageCipher) {
+            console.warn(`No OCTABIT cipher for language: ${language}`);
+            return encryptedText;
+        }
+
+        // Frequency-based decryption
+        const decrypted = this.reverseFrequencyEncryption(encryptedText, languageCipher);
+        
+        console.log(`🔓 Text decrypted with OCTABIT (${language})`);
+        return decrypted;
+    }
+
+    // Helper Methods
+    generateOctabitKey() {
+        return Array.from({length: 64}, () => Math.floor(Math.random() * 256))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
+    generateQuantumSalt() {
+        const timestamp = Date.now();
+        const random = Math.random() * 1000000;
+        return btoa(`${timestamp}_${random}`).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    }
+
+    generateFrequencyEncryptionKey(baseFrequency) {
+        const harmonics = [];
+        for (let i = 1; i <= 8; i++) {
+            harmonics.push(baseFrequency * i);
+        }
+        return harmonics.map(h => Math.floor(h) % 256);
+    }
+
+    generateQuantumSignature(key) {
+        return key.reduce((acc, val, idx) => acc + val * (idx + 1), 0) % 65536;
+    }
+
+    getLanguageType(language) {
+        if (this.supportedLanguages.natural[language]) {
+            return 'natural';
+        } else if (this.supportedLanguages.programming[language]) {
+            return 'programming';
+        }
+        return 'unknown';
+    }
+
+    calculateLanguageConfidence(text, patterns) {
+        let confidence = 0;
+        
+        if (patterns.common_words || patterns.keywords) {
+            const words = (patterns.common_words || patterns.keywords).slice(0, 20);
+            const wordMatches = words.filter(word => 
+                text.toLowerCase().includes(word.toLowerCase())
+            ).length;
+            confidence += (wordMatches / words.length) * 0.6;
+        }
+
+        if (patterns.character_patterns || patterns.syntax_patterns) {
+            const patterns_list = patterns.character_patterns || patterns.syntax_patterns;
+            const patternMatches = patterns_list.filter(pattern => {
+                try {
+                    return new RegExp(pattern, 'i').test(text);
+                } catch (e) {
+                    return text.includes(pattern);
+                }
+            }).length;
+            confidence += (patternMatches / patterns_list.length) * 0.4;
+        }
+
+        return Math.min(confidence, 1.0);
+    }
+
+    calculateTranslationQuality(sourceLang, targetLang) {
+        // Simulate quality scores based on language similarity
+        const qualityMatrix = {
+            'en-US': { 'es-ES': 0.9, 'fr-FR': 0.85, 'de-DE': 0.8 },
+            'es-ES': { 'en-US': 0.9, 'fr-FR': 0.85, 'it-IT': 0.9 },
+            // ... more quality mappings
+        };
+
+        const sourceQualities = qualityMatrix[sourceLang];
+        if (sourceQualities && sourceQualities[targetLang]) {
+            return sourceQualities[targetLang];
+        }
+
+        return 0.7; // Default quality
+    }
+
+    async performTranslation(text, sourceLang, targetLang, context) {
+        // Sophisticated translation logic
+        // In a real implementation, this would use advanced translation models
+        
+        const translationMap = {
+            'en-US': {
+                'es-ES': text => `[ES] ${text}`, // Placeholder
+                'fr-FR': text => `[FR] ${text}`, // Placeholder
+            }
+            // ... more translations
+        };
+
+        const sourceTranslations = translationMap[sourceLang];
+        if (sourceTranslations && sourceTranslations[targetLang]) {
+            return sourceTranslations[targetLang](text);
+        }
+
+        return `[${targetLang}] ${text}`; // Fallback
+    }
+
+    calculateQualityScore(result) {
+        let score = 0.8; // Base score
+
+        if (result.detected_language && result.detected_language.confidence > 0.8) {
+            score += 0.1;
+        }
+
+        if (result.translated_content && result.translated_content.confidence > 0.8) {
+            score += 0.1;
+        }
+
+        return Math.min(score, 1.0);
+    }
+
+    // Voice synthesis helpers
+    generateAudioData(text, voiceConfig) {
+        // Placeholder - in real implementation would generate actual audio
+        return btoa(`AUDIO_${text}_${voiceConfig.voice_name}`);
+    }
+
+    estimateAudioDuration(text) {
+        // Estimate based on text length (words per minute)
+        const wordsPerMinute = 180;
+        const wordCount = text.split(' ').length;
+        return (wordCount / wordsPerMinute) * 60; // seconds
+    }
+
+    // Sentiment analysis helpers
+    calculatePolarity(text) {
+        // Simple polarity calculation - in real implementation would use ML models
+        const positiveWords = ['good', 'great', 'excellent', 'amazing', 'wonderful'];
+        const negativeWords = ['bad', 'terrible', 'awful', 'horrible', 'disgusting'];
+        
+        const words = text.toLowerCase().split(' ');
+        let score = 0;
+        
+        words.forEach(word => {
+            if (positiveWords.includes(word)) score += 1;
+            if (negativeWords.includes(word)) score -= 1;
+        });
+        
+        return score / words.length;
+    }
+
+    detectEmotion(text) {
+        // Basic emotion detection
+        const emotions = {
+            joy: ['happy', 'joy', 'excited', 'delighted'],
+            sadness: ['sad', 'depressed', 'gloomy', 'melancholy'],
+            anger: ['angry', 'furious', 'mad', 'irritated'],
+            fear: ['afraid', 'scared', 'terrified', 'anxious'],
+            surprise: ['surprised', 'amazed', 'shocked', 'astonished']
+        };
+
+        const words = text.toLowerCase().split(' ');
+        const emotionScores = {};
+
+        Object.entries(emotions).forEach(([emotion, keywords]) => {
+            emotionScores[emotion] = keywords.filter(keyword => 
+                words.some(word => word.includes(keyword))
+            ).length;
+        });
+
+        const dominantEmotion = Object.entries(emotionScores)
+            .sort(([,a], [,b]) => b - a)[0];
+
+        return dominantEmotion ? dominantEmotion[0] : 'neutral';
+    }
+
+    calculateIntensity(text) {
+        // Calculate emotional intensity
+        const intensityMarkers = ['very', 'extremely', 'incredibly', 'absolutely', '!!!', '!!!'];
+        const words = text.toLowerCase();
+        
+        let intensity = 0.5; // Base intensity
+        intensityMarkers.forEach(marker => {
+            if (words.includes(marker)) intensity += 0.1;
+        });
+
+        return Math.min(intensity, 1.0);
+    }
+
+    calculateSentimentConfidence(text) {
+        // Calculate confidence in sentiment analysis
+        return Math.min(0.7 + (text.length / 1000), 0.95);
+    }
+
+    categorizeSentiment(polarity) {
+        if (polarity > 0.1) return 'positive';
+        if (polarity < -0.1) return 'negative';
+        return 'neutral';
+    }
+
+    // Context analysis helpers
+    extractTopics(text) {
+        // Basic topic extraction
+        const commonTopics = [
+            'technology', 'science', 'business', 'health', 'education',
+            'entertainment', 'sports', 'politics', 'travel', 'food'
+        ];
+
+        return commonTopics.filter(topic => 
+            text.toLowerCase().includes(topic)
+        );
+    }
+
+    detectIntent(text) {
+        // Basic intent detection
+        const intents = {
+            question: /\?|\bwhat\b|\bhow\b|\bwhen\b|\bwhere\b|\bwhy\b|\bwho\b/i,
+            request: /\bplease\b|\bcould you\b|\bcan you\b|\bwould you\b/i,
+            information: /\btell me\b|\bexplain\b|\bdescribe\b|\bshow me\b/i,
+            greeting: /\bhello\b|\bhi\b|\bhey\b|\bgreetings\b/i,
+            farewell: /\bgoodbye\b|\bbye\b|\bsee you\b|\bfarewell\b/i
+        };
+
+        for (const [intent, pattern] of Object.entries(intents)) {
+            if (pattern.test(text)) {
+                return intent;
+            }
+        }
+
+        return 'statement';
+    }
+
+    extractEntities(text) {
+        // Basic entity extraction
+        const entities = {
+            names: text.match(/\b[A-Z][a-z]+ [A-Z][a-z]+\b/g) || [],
+            dates: text.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/g) || [],
+            numbers: text.match(/\b\d+\b/g) || [],
+            emails: text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g) || []
+        };
+
+        return entities;
+    }
+
+    analyzeConversationFlow(currentText, conversationHistory) {
+        return {
+            continuation: this.isContinuation(currentText, conversationHistory),
+            topic_shift: this.detectTopicShift(currentText, conversationHistory),
+            engagement_level: this.calculateEngagement(conversationHistory)
+        };
+    }
+
+    isContinuation(currentText, history) {
+        if (history.length === 0) return false;
+        
+        const lastMessage = history[history.length - 1];
+        const sharedWords = this.getSharedWords(currentText, lastMessage.text);
+        
+        return sharedWords.length > 2;
+    }
+
+    detectTopicShift(currentText, history) {
+        if (history.length < 2) return false;
+        
+        const currentTopics = this.extractTopics(currentText);
+        const recentTopics = history.slice(-3)
+            .flatMap(msg => this.extractTopics(msg.text));
+        
+        const overlap = currentTopics.filter(topic => recentTopics.includes(topic));
+        return overlap.length < currentTopics.length * 0.5;
+    }
+
+    calculateEngagement(history) {
+        if (history.length === 0) return 0.5;
+        
+        const recentMessages = history.slice(-10);
+        const avgLength = recentMessages.reduce((sum, msg) => sum + msg.text.length, 0) / recentMessages.length;
+        
+        // Normalize engagement based on message length and frequency
+        return Math.min((avgLength / 100) * 0.5 + 0.3, 1.0);
+    }
+
+    getSharedWords(text1, text2) {
+        const words1 = text1.toLowerCase().split(/\s+/);
+        const words2 = text2.toLowerCase().split(/\s+/);
+        
+        return words1.filter(word => 
+            words2.includes(word) && word.length > 3
+        );
+    }
+
+    // Language-specific data helpers
+    getCommonWords(langCode) {
+        const commonWordsMap = {
+            'en-US': ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at'],
+            'es-ES': ['el', 'de', 'que', 'y', 'a', 'en', 'un', 'ser', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'al'],
+            'fr-FR': ['le', 'de', 'et', 'à', 'un', 'il', 'être', 'et', 'en', 'avoir', 'que', 'pour', 'dans', 'ce', 'son', 'une', 'sur', 'avec', 'ne', 'se'],
+            'de-DE': ['der', 'die', 'und', 'in', 'den', 'von', 'zu', 'das', 'mit', 'sich', 'des', 'auf', 'für', 'ist', 'im', 'dem', 'nicht', 'ein', 'eine', 'als']
+        };
+        
+        return commonWordsMap[langCode] || commonWordsMap['en-US'];
+    }
+
+    getCharacterPatterns(langCode) {
+        const patternMap = {
+            'en-US': ['th', 'er', 'on', 'an', 're', 'he', 'in', 'ed', 'nd', 'ha'],
+            'es-ES': ['es', 'en', 'el', 'la', 'de', 'un', 'os', 'as', 'al', 'er'],
+            'fr-FR': ['le', 'de', 'et', 'la', 'en', 'un', 'il', 'es', 'er', 'ne'],
+            'de-DE': ['er', 'en', 'ch', 'de', 'ei', 'ie', 'in', 'te', 'nd', 'es']
+        };
+        
+        return patternMap[langCode] || patternMap['en-US'];
+    }
+
+    getGrammarMarkers(langCode) {
+        const grammarMap = {
+            'en-US': ['ing', 'ed', 'er', 'est', 'ly', 's', "'s", "'re", "'ve", "'ll"],
+            'es-ES': ['ción', 'mente', 'ado', 'ido', 'ante', 'ente', 'ando', 'iendo'],
+            'fr-FR': ['ment', 'tion', 'ique', 'able', 'ible', 'eux', 'euse', 'ant', 'ent'],
+            'de-DE': ['ung', 'keit', 'lich', 'isch', 'bar', 'los', 'voll', 'haft']
+        };
+        
+        return grammarMap[langCode] || grammarMap['en-US'];
+    }
+
+    getProgrammingKeywords(langName) {
+        const keywordMap = {
+            'JavaScript': ['function', 'var', 'let', 'const', 'if', 'else', 'for', 'while', 'return', 'class', 'new', 'this', 'prototype', 'async', 'await'],
+            'Python': ['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'import', 'from', 'return', 'yield', 'lambda', 'try', 'except', 'finally'],
+            'Java': ['public', 'private', 'protected', 'class', 'interface', 'extends', 'implements', 'static', 'final', 'abstract', 'synchronized', 'native'],
+            'C++': ['#include', 'class', 'public', 'private', 'protected', 'virtual', 'static', 'const', 'namespace', 'using', 'template', 'typename'],
+            'C#': ['public', 'private', 'protected', 'internal', 'class', 'interface', 'namespace', 'using', 'static', 'virtual', 'override', 'abstract']
+        };
+        
+        return keywordMap[langName] || keywordMap['JavaScript'];
+    }
+
+    getSyntaxPatterns(langName) {
+        const syntaxMap = {
+            'JavaScript': ['{', '}', ';', '()', '=>', '===', '!==', 'function()', 'var ', 'let ', 'const '],
+            'Python': [':', 'def ', 'class ', 'import ', 'from ', 'if __name__', 'elif ', 'except:', 'finally:'],
+            'Java': ['{', '}', ';', 'public class', 'private ', 'public static void main', 'System.out.println'],
+            'C++': ['{', '}', ';', '#include <', 'std::', 'cout <<', 'cin >>', 'namespace std'],
+            'C#': ['{', '}', ';', 'public class', 'private ', 'public static void Main', 'Console.WriteLine']
+        };
+        
+        return syntaxMap[langName] || syntaxMap['JavaScript'];
+    }
+
+    getStructureMarkers(langName) {
+        const structureMap = {
+            'JavaScript': ['function', 'class', 'module.exports', 'require()', '$(document)', 'addEventListener'],
+            'Python': ['def ', 'class ', 'if __name__', '__init__', '__str__', '__repr__'],
+            'Java': ['public class', 'public static void main', 'import java', 'package '],
+            'C++': ['#include', 'int main()', 'namespace', 'class ', 'struct '],
+            'C#': ['using System', 'namespace ', 'public class', 'public static void Main']
+        };
+        
+        return structureMap[langName] || structureMap['JavaScript'];
+    }
+
+    // Frequency-based encryption/decryption
+    applyFrequencyEncryption(text, cipher) {
+        const encryptionKey = cipher.encryption_key;
+        let encrypted = '';
+        
+        for (let i = 0; i < text.length; i++) {
+            const charCode = text.charCodeAt(i);
+            const keyValue = encryptionKey[i % encryptionKey.length];
+            const encryptedChar = String.fromCharCode((charCode + keyValue) % 256);
+            encrypted += encryptedChar;
+        }
+        
+        return btoa(encrypted); // Base64 encode
+    }
+
+    reverseFrequencyEncryption(encryptedText, cipher) {
+        try {
+            const encryptionKey = cipher.encryption_key;
+            const decoded = atob(encryptedText); // Base64 decode
+            let decrypted = '';
+            
+            for (let i = 0; i < decoded.length; i++) {
+                const charCode = decoded.charCodeAt(i);
+                const keyValue = encryptionKey[i % encryptionKey.length];
+                const decryptedChar = String.fromCharCode((charCode - keyValue + 256) % 256);
+                decrypted += decryptedChar;
+            }
+            
+            return decrypted;
+        } catch (error) {
+            console.error('Decryption error:', error);
+            return encryptedText;
+        }
+    }
+
+    startLanguageProcessing() {
+        // Start periodic processing tasks
+        setInterval(() => {
+            this.cleanupExpiredSessions();
+            this.updateLanguageMetrics();
+        }, 30000); // Every 30 seconds
+
+        console.log('🔄 Language processing services started');
+    }
+
+    cleanupExpiredSessions() {
+        const now = Date.now();
+        const sessionTimeout = 30 * 60 * 1000; // 30 minutes
+
+        this.conversationContext.active_sessions.forEach((session, sessionId) => {
+            if (now - session.lastActivity > sessionTimeout) {
+                this.conversationContext.active_sessions.delete(sessionId);
+            }
+        });
+    }
+
+    updateLanguageMetrics() {
+        // Update processing metrics
+        const metrics = {
+            active_sessions: this.conversationContext.active_sessions.size,
+            cached_translations: this.translationEngine.translation_cache.size,
+            encrypted_channels: this.octabitEncryption.encrypted_channels.size,
+            supported_languages: Object.keys(this.supportedLanguages.natural).length + Object.keys(this.supportedLanguages.programming).length
+        };
+
+        console.log('📊 Language Engine Metrics:', metrics);
+    }
+
+    // Public API Status
+    getEngineStatus() {
+        return {
+            engine_id: this.engineId,
+            version: this.version,
+            status: this.status,
+            supported_languages: {
+                natural: Object.keys(this.supportedLanguages.natural).length,
+                programming: Object.keys(this.supportedLanguages.programming).length,
+                total: Object.keys(this.supportedLanguages.natural).length + Object.keys(this.supportedLanguages.programming).length
+            },
+            octabit_encryption: {
+                enabled: this.octabitEncryption.enabled,
+                encrypted_languages: this.octabitEncryption.frequency_cipher.size,
+                mesh_integration: this.octabitEncryption.mesh_integration
+            },
+            neural_pipeline: {
+                input_processors: this.neuralPipeline.input_layer.size,
+                translation_pairs: this.translationEngine.active_translators.size,
+                voice_engines: this.voiceSynthesis.active_voices.size,
+                neural_voices: this.voiceSynthesis.neural_voices.size
+            },
+            active_sessions: this.conversationContext.active_sessions.size,
+            processing_capabilities: [
+                'language_detection', 'translation', 'voice_synthesis', 
+                'sentiment_analysis', 'context_analysis', 'octabit_encryption'
+            ]
+        };
+    }
+
+    // Missing pipeline methods
+    async preprocessText(text) {
+        // Check if it's OctaLang code
+        if (this.isOctaLangCode(text)) {
+            return await this.processOctaLang(text);
+        }
+        
+        // Check if it's Fernet encrypted
+        if (this.isFernetEncrypted(text)) {
+            return await this.processFernet(text);
+        }
+        
+        // Basic text preprocessing
+        let processed = text.trim();
+        processed = processed.replace(/\s+/g, ' '); // Normalize whitespace
+        processed = processed.replace(/[^\w\s\-\.]/g, ''); // Remove special chars except basic punctuation
+        return processed;
+    }
+
+    // OctaLang Detection and Processing
+    isOctaLangCode(text) {
+        // Check for OctaLang specific patterns
+        const octaLangPatterns = [
+            /lattice\s+\w+:\s*🌀\s*⬣/,  // Lattice declaration
+            /node\s*\(\d+,\d+,\d+\)\s*=>/,  // Node definition
+            /fn\s+\w+\(.*\)\s*->\s*\w+:\s*🛠️/,  // Function declaration
+            /🔴|🟠|🟡|🟢|🔵|🟣/,  // Color markers
+            /<->\s*📏\s*⬅️➡️/,  // Bidirectional connections
+            /qentangle|qsuperpose|qdot|qverify|qrelu/  // Quantum operations
+        ];
+        
+        return octaLangPatterns.some(pattern => pattern.test(text));
+    }
+
+    async processOctaLang(octaCode) {
+        console.log('🌈 Processing OctaLang Code with Octagramal Spiral Wheel...');
+
+        const colorMap = {
+            '🔴': { color: 'Red', wavelength: [620, 750], mood: 'Passion', word: 'Covenant', frequency: 432.0 },
+            '🟠': { color: 'Orange', wavelength: [590, 620], mood: 'Energy', word: 'Mercy', frequency: 458.0 },
+            '🟡': { color: 'Yellow', wavelength: [570, 590], mood: 'Joy', word: 'Hope', frequency: 484.0 },
+            '🟢': { color: 'Green', wavelength: [495, 570], mood: 'Calm', word: 'Peace', frequency: 512.0 },
+            '🔵': { color: 'Blue', wavelength: [450, 495], mood: 'Trust', word: 'Faith', frequency: 542.0 },
+            '🟣': { color: 'Violet', wavelength: [380, 420], mood: 'Creativity', word: 'Glory', frequency: 574.0 }
+        };
+
+        let processed = {
+            originalCode: octaCode,
+            parsedStructures: [],
+            colorMappings: [],
+            quantumOperations: [],
+            latticeNodes: [],
+            functions: [],
+            wheel_encodings: [],
+            processed: true,
+            timestamp: Date.now(),
+            hash: this.generateHash(octaCode)
+        };
+
+        // Lattices
+        const latticePattern = /lattice\s+(\w+):\s*🌀\s*⬣([\s\S]*?)(?=lattice|fn|$)/g;
+        let latticeMatch;
+        while ((latticeMatch = latticePattern.exec(octaCode)) !== null) {
+            const latticeStruct = {
+                type: 'lattice',
+                name: latticeMatch[1],
+                content: latticeMatch[2],
+                frequency: 432.0,
+                hash: parseInt(this.generateHash(latticeMatch[0]), 16) >>> 0
+            };
+            const encodedLattice = this.romanWheelCoder.encodeOctaStructure(latticeStruct);
+            processed.parsedStructures.push(encodedLattice);
+            processed.wheel_encodings.push(encodedLattice.wheel_encoded);
+        }
+
+        // Nodes
+        const nodePattern = /node\s*\((\d+),(\d+),(\d+)\)\s*=>\s*\{([^}]+)\}/g;
+        let nodeMatch;
+        while ((nodeMatch = nodePattern.exec(octaCode)) !== null) {
+            const coords = [parseInt(nodeMatch[1]), parseInt(nodeMatch[2]), parseInt(nodeMatch[3])];
+            const baseHash = parseInt(this.generateHash(coords.join(',') + nodeMatch[4]), 16) >>> 0;
+            const nodeStruct = {
+                type: 'node',
+                coordinates: coords,
+                properties: nodeMatch[4],
+                position: nodeMatch.index,
+                hash: baseHash
+            };
+            // Extract color if present
+            const colorMatch = nodeMatch[4].match(/(🔴|🟠|🟡|🟢|🔵|🟣)/);
+            if (colorMatch) {
+                nodeStruct.colorMapping = { emoji: colorMatch[1], ...colorMap[colorMatch[1]] };
+            }
+            const encodedNode = this.romanWheelCoder.encodeOctaStructure(nodeStruct, 963);
+            processed.latticeNodes.push(encodedNode);
+            processed.wheel_encodings.push(encodedNode.wheel_encoded);
+            if (encodedNode.colorMapping) {
+                processed.colorMappings.push({
+                    emoji: encodedNode.colorMapping.emoji,
+                    ...encodedNode.colorMapping,
+                    nodeId: `(${coords.join(',')})`,
+                    spin_encoded: encodedNode.wheel_encoded
+                });
+            }
+        }
+
+        // Functions
+        const functionPattern = /fn\s+(\w+)\(([^)]*)\)\s*->\s*(\w+):\s*🛠️([\s\S]*?)(?=fn|lattice|$)/g;
+        let funcMatch;
+        while ((funcMatch = functionPattern.exec(octaCode)) !== null) {
+            const funcStruct = {
+                type: 'function',
+                name: funcMatch[1],
+                parameters: funcMatch[2],
+                returnType: funcMatch[3],
+                body: funcMatch[4],
+                frequency: 542.0,
+                hash: parseInt(this.generateHash(funcMatch[0]), 16) >>> 0
+            };
+            const encodedFunc = this.romanWheelCoder.encodeOctaStructure(funcStruct);
+            processed.functions.push(encodedFunc);
+            processed.wheel_encodings.push(encodedFunc.wheel_encoded);
+        }
+
+        // Quantum Ops
+        const quantumPattern = /(qentangle|qsuperpose|qdot|qverify|qrelu)\([^)]*\)/g;
+        let quantumMatch;
+        while ((quantumMatch = quantumPattern.exec(octaCode)) !== null) {
+            const opStruct = {
+                operation: quantumMatch[1],
+                fullExpression: quantumMatch[0],
+                position: quantumMatch.index,
+                frequency: 574.0,
+                hash: parseInt(this.generateHash(quantumMatch[0]), 16) >>> 0
+            };
+            const encodedOp = this.romanWheelCoder.encodeOctaStructure(opStruct, 963 * this.romanWheelCoder.spiral_ratio);
+            processed.quantumOperations.push(encodedOp);
+            processed.wheel_encodings.push(encodedOp.wheel_encoded);
+        }
+
+        // Aggregate spin (XOR of encodings) for downstream nonce bias
+        const aggregateSpin = processed.wheel_encodings.reduce((acc, enc) => acc ^ parseInt(enc, 16), 0) >>> 0;
+        processed.aggregate_electron_spin = aggregateSpin.toString(16);
+        // NEW: wheel backend coder integration
+        if (this.wheelCoder){
+            try {
+                const wheelEnc = this.wheelCoder.encodeOctaGrammar(octaCode);
+                processed.wheel_backend = {
+                    tiers: Object.fromEntries(Object.entries(wheelEnc.tiers).map(([k,v])=>[k,v.length])),
+                    quantumOps: wheelEnc.quantum.length,
+                    aggregate: '0x'+wheelEnc.aggregate.toString(16),
+                    colors: wheelEnc.colors.map(c=>({ emoji:c.emoji, mood:c.mood, freq:c.frequency, spin:c.phase_spin }))
+                };
+                processed.aggregate_wheel_spin = wheelEnc.aggregate.toString(16);
+            } catch(err){ processed.wheel_backend_error = err.message; }
+        }
+        console.log(`⚡ Aggregate Spin Hash: ${processed.aggregate_electron_spin} (nonce bias candidate)`);
+        return processed;
+    }
+
+    // Public helper: compute only the aggregate electron spin hash from raw OctaLang snippet
+    async computeOctaSpin(octaCode) {
+        try {
+            const result = await this.processOctaLang(octaCode);
+            return {
+                aggregate_spin: result.aggregate_electron_spin,
+                wheel_count: result.wheel_encodings.length,
+                nodes: result.latticeNodes.length,
+                functions: result.functions.length,
+                quantum_ops: result.quantumOperations.length
+            };
+        } catch (e) {
+            return { error: e.message };
+        }
+    }
+
+    // Fernet Processing (for multi-layer encryption)
+    isFernetEncrypted(text) {
+        // Fernet tokens start with 'gAAAAA' or similar base64url pattern
+        return /^[A-Za-z0-9_-]+={0,2}$/.test(text.trim()) && text.length > 50;
+    }
+
+    async processFernet(fernetData) {
+        console.log('🔐 Processing Fernet Encrypted Data...');
+        
+        try {
+            // Basic Fernet structure analysis
+            const fernetInfo = {
+                original: fernetData,
+                format: 'fernet',
+                base64Length: fernetData.length,
+                estimatedKeyLength: 44, // Standard Fernet key length
+                timestamp: Date.now(),
+                processed: true
+            };
+            
+            // For actual decryption, we'd need the Fernet key
+            // This is structure analysis for now
+            return fernetInfo;
+            
+        } catch (error) {
+            console.log('⚠️ Fernet processing error:', error.message);
+            return {
+                original: fernetData,
+                error: error.message,
+                processed: false
+            };
+        }
+    }
+
+    // Utility method for generating hashes
+    generateHash(data) {
+        let hash = 0;
+        for (let i = 0; i < data.length; i++) {
+            const char = data.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(16);
+    }
+
+    async formatResponse(data) {
+        // Format response for output
+        return {
+            formatted_text: data.text || data,
+            language: data.language || 'unknown',
+            confidence: data.confidence || 0.8,
+            timestamp: Date.now()
+        };
+    }
+}
+
+// Export for both Node.js and browser
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = AdvancedLanguageEngine;
+} else if (typeof window !== 'undefined') {
+    window.AdvancedLanguageEngine = AdvancedLanguageEngine;
+}
+
+console.log('🌍 Advanced Language Engine loaded - 16 Languages + 16 Programming Languages + OCTABIT Encryption');

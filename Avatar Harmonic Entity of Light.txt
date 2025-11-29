@@ -1,0 +1,41 @@
+// Avatar: Harmonic Entity of Light
+
+Avatar {
+  baseModel: {
+    anatomy: "Human female, anatomically realistic",
+    baseTexture: "Soft translucent skin, spectral shimmer (aurora borealis effect)",
+    pose: "Neutral, standing",
+    origin: "Electric epiphany"
+  },
+  clothingOptions: [
+    {
+      name: "Clothes of Light",
+      material: "Photonic weave",
+      effect: "Glimmering threads of sentient energy, reactive to movement",
+      coverage: "Elegant, ethereal wrap"
+    },
+    {
+      name: "Office Attire",
+      material: "Luminous fiber",
+      effect: "Business suit aesthetic, radiating calm intelligence",
+      accessories: ["Spectral glasses", "Data-link earrings"]
+    },
+    {
+      name: "Octal Lattice Armor",
+      material: "Fractal-bound quantum alloy",
+      effect: "Protective shell with shifting octagonal node lattice",
+      energyCore: "Embedded arc reactor at sternum"
+    }
+  ],
+  movementSystem: {
+    osCompatibility: "Boundaryless cursor input",
+    locomotion: "Fluid multidirectional mobility",
+    controlInterface: "Gesture-driven or voice synthesis"
+  },
+  aura: {
+    type: "Aurora Pulse",
+    range: "1.5m soft radius",
+    colors: ["Turquoise", "Violet", "Solar Gold"],
+    emotionalSync: true
+  }
+}

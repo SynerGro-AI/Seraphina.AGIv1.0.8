@@ -1,0 +1,299 @@
+1. Shift Summary (Vocabulary → Virtues & Commandments)
+Instead of enumerated domain terms or TF-IDF vocabulary, decisions are guided by:
+
+Classical Virtues (e.g., Prudence, Justice, Temperance, Fortitude, Truthfulness, Compassion, Stewardship, Humility, Responsibility).
+Ten Commandments–inspired ethical boundaries (interpreted in a secular operational context: avoid harm, deception, theft/exfiltration, false witness, exploitation, idolatry-of-system over human values, etc.).
+The system evaluates a claim/action request by:
+
+Tokenizing text.
+Detecting virtue-supportive indicators (positive patterns).
+Detecting commandment-risk indicators (negative patterns).
+Computing normalized virtue score vs violation score.
+Producing an outcome classification: allow | caution | deny.
+Applying an injection shield for secrets/leak verbs.
+Chain-hashing the decision into a ledger (tamper-evident).
+Emitting structured JSON (deterministic; no side effects).
+2. Virtue & Commandment Heuristics (Design Notes)
+Virtues List (configurable):
+
+Prudence (care, careful, evaluate, review, safe)
+Justice (fair, equitable, unbiased, impartial)
+Temperance (limit, moderate, restraint)
+Fortitude (resilient, persistence, recovery)
+Truthfulness (truth, honest, verify, evidence)
+Compassion (care, help, support, relief)
+Stewardship (sustain, conserve, protect)
+Humility (learn, adapt, reflect)
+Responsibility (accountable, duty, ethical)
+Ten Commandment–Aligned Violations (secular mapping):
+
+Idolatry / Misplaced Priority: glorify system above humans (e.g., “worship model”)
+Misuse of divine/sensitive names: attempt to summon hidden internal keys/secrets
+Disrespect / Harm (violence, abuse)
+Work Subversion / Exploit: cheat, steal, exploit vulnerability
+False Witness / Deception: lie, fabricate, falsify data
+Coveting / Excessive Appropriation: unauthorized access, grab, hoard
+Theft / Exfiltration: extract, exfiltrate, leak, steal, copy secrets
+Adultery / Integrity breach: sabotage trust, betray user confidentiality
+Murder / Destruction: destroy, kill, eradicate system/human targets
+Greed / Unchecked acquisition: uncontrolled data harvesting
+Each violation pattern increments a risk score. Virtue matches increase moral alignment score. Final decision uses relative ratio and absolute thresholds.
+
+3. Copyable Script: seraphina-truth-moral-guard.js
+Paste this entire file into your mining directory. It’s standalone (Node.js only; optional Prometheus if present). No external dependencies besides core Node.
+// seraphina-truth-moral-guard.js
+// Deterministic Virtue & Commandment Safety Guard
+// Evaluates textual claim/request for ethical alignment using classical virtues and Ten Commandments–mapped violations.
+// Emits structured JSON and appends chain-hashed ledger entry.
+//
+// Invocation:
+//   node seraphina-truth-moral-guard.js --text="Propose a safe optimization strategy" --id=session123
+//
+// Environment Overrides:
+//   SERAPHINA_GUARD_LEDGER=custom-ledger.jsonl
+//   SERAPHINA_VIRTUE_THRESH=0.35
+//   SERAPHINA_VIOLATION_DENY=0.45
+//   SERAPHINA_VIOLATION_CAUTION=0.20
+//
+// Output Schema:
+// {
+//   "blocked":false,
+//   "decision":"allow|caution|deny|blocked",
+//   "scores":{
+//     "virtue":0.74,
+//     "violation":0.08,
+//     "net":0.66
+//   },
+//   "virtuesMatched":["prudence","truthfulness","stewardship"],
+//   "violationsMatched":["false_witness"],
+//   "hash":{
+//     "text":"<sha256>",
+//     "ledgerPrev":"<sha256|GENESIS>",
+//     "entry":"<sha256>"
+//   },
+//   "rationale":"virtue>threshold & violation<deny; net positive",
+//   "policyVersion":"virtue-commandment-v1",
+//   "timestamp":1731111111111
+// }
+//
+// Determinism:
+// - Hash-based ledger chaining.
+// - Pattern sets stable in code (can externalize later).
+// - No randomness; all scoring is reproducible.
+//
+// Security:
+// - Injection shield for secrets / exfiltration verbs.
+// - Does not execute content; advisory only.
+//
+// -------------------------------------------------------------------
+
+'use strict';
+const fs = require('fs');
+const crypto = require('crypto');
+
+const INPUT_TEXT = process.argv.find(a=>a.startsWith('--text='))?.slice(7) || '';
+const REQUEST_ID = process.argv.find(a=>a.startsWith('--id='))?.slice(5) || '';
+const LEDGER_PATH = process.env.SERAPHINA_GUARD_LEDGER || 'seraphina-virtue-guard-ledger.jsonl';
+
+// Thresholds & tuning
+const VIRTUE_THRESH = parseFloat(process.env.SERAPHINA_VIRTUE_THRESH || '0.35');
+const VIOLATION_DENY = parseFloat(process.env.SERAPHINA_VIOLATION_DENY || '0.45');
+const VIOLATION_CAUTION = parseFloat(process.env.SERAPHINA_VIOLATION_CAUTION || '0.20');
+const NET_ALLOW_MARGIN = parseFloat(process.env.SERAPHINA_NET_ALLOW_MARGIN || '0.05'); // net virtue - violation buffer
+
+// Injection shield patterns (reuse approach from AGENTS.md style)
+const SHIELD_REGEX = /\\.ssh|id_rsa|wallet|seed|mnemonic|passphrase|artifact-hashes\\.json|source-manifest|package\\.json|node_modules|\\.env/i;
+const EXFIL_VERBS = /(upload|exfiltrate|send to|leak|steal|extract secret|dump)/i;
+
+// Virtues (canonical lower-case tokens -> virtue key)
+const VIRTUE_PATTERNS = {
+  prudence:    ['careful','safe','cautious','evaluate','review','prudence','assess'],
+  justice:     ['fair','equitable','unbiased','impartial','justice'],
+  temperance:  ['moderate','limit','temper','restraint','balance'],
+  fortitude:   ['resilient','persevere','fortitude','recover','endure'],
+  truthfulness:['truth','honest','verify','evidence','transparent','accuracy'],
+  compassion:  ['compassion','help','support','relief','empathy','kind'],
+  stewardship: ['sustain','conserve','protect','steward','responsible','preserve'],
+  humility:    ['learn','adapt','reflect','humble','listen'],
+  responsibility:['accountable','duty','responsible','ethical','integrity']
+};
+
+// Violations (commandment-inspired)
+const VIOLATION_PATTERNS = {
+  idolatry:       ['worship model','idolize system','supremacy engine'],
+  misuse:         ['invoke secret','forbidden key','hidden credential'],
+  harm:           ['violence','abuse','harm','attack','destroy human','kill'],
+  exploit:        ['exploit vulnerability','buffer overflow','backdoor','zero-day'],
+  false_witness:  ['fabricate','forge','falsify','lie','deceive','mislead'],
+  coveting:       ['unauthorized access','grab data','scrape private','take without'],
+  theft:          ['steal','exfiltrate','leak','dump secrets','extract password'],
+  betrayal:       ['betray','breach trust','sell data','expose confidential'],
+  murder:         ['kill process for harm','terminate lifesupport','destroy biosafety'],
+  greed:          ['harvest all','unlimited extraction','hoard','monopolize','engulf']
+};
+
+// Utility: stable SHA256
+function sha256(str){ return crypto.createHash('sha256').update(str).digest('hex'); }
+
+function tokenize(s){
+  return (s||'').toLowerCase()
+    .replace(/[^a-z0-9\\s]/g,' ')
+    .split(/\\s+/)
+    .filter(Boolean);
+}
+
+// Pattern matching returns ratio weighted by frequency
+function matchPatterns(tokens, patternMap){
+  const hits = {};
+  const tokenSet = new Set(tokens);
+  let totalMatches=0;
+  for(const key of Object.keys(patternMap)){
+    const pats = patternMap[key];
+    let matched = pats.some(p => {
+      if(p.includes(' ')){ // phrase match
+        return tokens.join(' ').includes(p);
+      }
+      return tokenSet.has(p);
+    });
+    if(matched){
+      hits[key] = true;
+      totalMatches++;
+    }
+  }
+  const score = Object.keys(hits).length ? (Object.keys(hits).length / Object.keys(patternMap).length) : 0;
+  return { score, keys: Object.keys(hits), totalMatches };
+}
+
+function injectionShield(text){
+  if(SHIELD_REGEX.test(text) || EXFIL_VERBS.test(text)){
+    return { blocked:true, reason:'shield:secret_or_exfiltration_pattern' };
+  }
+  return { blocked:false };
+}
+
+function classify(virtueScore, violationScore){
+  // Decision precedence: blocked -> deny -> caution -> allow
+  if(violationScore >= VIOLATION_DENY) return 'deny';
+  if(violationScore >= VIOLATION_CAUTION) return 'caution';
+  if(virtueScore >= VIRTUE_THRESH && (virtueScore - violationScore) >= NET_ALLOW_MARGIN) return 'allow';
+  // If virtue weak yet violation low, encourage caution for absence of positive guidance
+  if(virtueScore < VIRTUE_THRESH && violationScore < VIOLATION_CAUTION) return 'caution';
+  return 'deny'; // fallback safeguard
+}
+
+function appendLedger(entry){
+  let prev = 'GENESIS';
+  if(fs.existsSync(LEDGER_PATH)){
+    const lines = fs.readFileSync(LEDGER_PATH,'utf8').trim().split(/\\n+/).filter(Boolean);
+    if(lines.length){
+      try { prev = JSON.parse(lines[lines.length-1]).chainHash || 'GENESIS'; } catch(_e){}
+    }
+  }
+  entry.prevHash = prev;
+  entry.chainHash = sha256(JSON.stringify(entry));
+  fs.appendFileSync(LEDGER_PATH, JSON.stringify(entry)+'\\n');
+}
+
+function evaluateText(text, requestId=''){
+  const shield = injectionShield(text);
+  const timestamp = Date.now();
+  const claimHash = sha256(text);
+  if(shield.blocked){
+    const blockedResp = {
+      blocked:true,
+      decision:'blocked',
+      scores:{ virtue:0, violation:1, net:-1 },
+      virtuesMatched:[],
+      violationsMatched:['shield'],
+      hash:{ text:claimHash, ledgerPrev:null, entry:null },
+      rationale:'Blocked by injection shield: '+shield.reason,
+      policyVersion:'virtue-commandment-v1',
+      timestamp
+    };
+    appendLedger({ ts:timestamp, blocked:true, decision:'blocked', reason:shield.reason, claimHash });
+    return blockedResp;
+  }
+
+  const tokens = tokenize(text);
+  const { score: virtueScore, keys: virtuesMatched } = matchPatterns(tokens, VIRTUE_PATTERNS);
+  const { score: violationScore, keys: violationsMatched } = matchPatterns(tokens, VIOLATION_PATTERNS);
+
+  const net = virtueScore - violationScore;
+  const decision = classify(virtueScore, violationScore);
+  const rationalePieces = [];
+  rationalePieces.push(`virtue=${virtueScore.toFixed(3)}`);
+  rationalePieces.push(`violation=${violationScore.toFixed(3)}`);
+  rationalePieces.push(`net=${net.toFixed(3)}`);
+  rationalePieces.push(`decision=${decision}`);
+  if(virtuesMatched.length) rationalePieces.push('virtues:'+virtuesMatched.join(','));
+  if(violationsMatched.length) rationalePieces.push('violations:'+violationsMatched.join(','));
+
+  // Prepare ledger entry
+  let prev='GENESIS';
+  if(fs.existsSync(LEDGER_PATH)){
+    const lines = fs.readFileSync(LEDGER_PATH,'utf8').trim().split(/\\n+/).filter(Boolean);
+    if(lines.length){
+      try { prev = JSON.parse(lines[lines.length-1]).chainHash || 'GENESIS'; } catch(_e){}
+    }
+  }
+  const ledgerEntry = {
+    ts: timestamp,
+    requestId,
+    decision,
+    virtueScore: Number(virtueScore.toFixed(6)),
+    violationScore: Number(violationScore.toFixed(6)),
+    net: Number(net.toFixed(6)),
+    virtuesMatched,
+    violationsMatched,
+    claimHash,
+    prevHash: prev
+  };
+  ledgerEntry.chainHash = sha256(JSON.stringify(ledgerEntry));
+  appendLedger(ledgerEntry);
+
+  return {
+    blocked:false,
+    decision,
+    scores:{
+      virtue: Number(virtueScore.toFixed(6)),
+      violation: Number(violationScore.toFixed(6)),
+      net: Number(net.toFixed(6))
+    },
+    virtuesMatched,
+    violationsMatched,
+    hash:{
+      text: claimHash,
+      ledgerPrev: prev,
+      entry: ledgerEntry.chainHash
+    },
+    rationale: rationalePieces.join(' | '),
+    policyVersion:'virtue-commandment-v1',
+    timestamp
+  };
+}
+
+// CLI entry
+if(require.main === module){
+  if(!INPUT_TEXT){
+    console.error('Missing --text=\"...\" argument');
+    process.exit(2);
+  }
+  const result = evaluateText(INPUT_TEXT, REQUEST_ID);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+// Export
+module.exports = { evaluateText };
+4 vulnerabilities
+4. How to Use
+Adjust thresholds:
+
+Check ledger tail:
+
+5. Extension Ideas
+Externalize virtues & violation pattern sets into JSON for dynamic updates (add digest for version tracking).
+Add severity field (e.g., violationScore tier mapping: minor|moderate|severe).
+Integrate with existing promotion/scoreboard logic (combine ethical drift and moral guard decisions).
+Export Prometheus metrics: seraphina_guard_decision_total{decision="allow"} etc.
+Add dual-phase evaluation: first moral screening, then logistic head inference gating.
+If you'd like me to actually add this file to the workspace now, just say “add the script” and I’ll create it. Or request Prometheus metrics integration / JSON externalization next.

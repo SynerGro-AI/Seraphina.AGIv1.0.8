@@ -1,0 +1,40 @@
+// Electron main process (CommonJS retained for simplicity; local-only build)
+const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const path = require('path');
+const { startInternalApiServer } = require('./server/internal-api');
+let internalApiServer = null;
+
+let avatarWindow;
+
+function createAvatarWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  avatarWindow = new BrowserWindow({
+    width: 400,
+    height: 600,
+    x: width - 450,
+    y: height - 650,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    resizable: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'electron-preload.js')
+    }
+  });
+  avatarWindow.loadFile('desktop-avatar.html');
+  avatarWindow.setAlwaysOnTop(true, 'screen-saver');
+  avatarWindow.on('closed', () => { avatarWindow = null; });
+}
+
+app.whenReady().then(()=>{
+  createAvatarWindow();
+  internalApiServer = startInternalApiServer(app.getPath('userData'));
+});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createAvatarWindow(); });
+app.on('before-quit', ()=>{ try { internalApiServer?.close(); } catch(_){} });
+ipcMain.handle('minimize-window', () => { if (avatarWindow) avatarWindow.minimize(); });
+ipcMain.handle('close-window', () => { if (avatarWindow) avatarWindow.close(); });

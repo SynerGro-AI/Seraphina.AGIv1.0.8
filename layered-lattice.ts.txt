@@ -1,0 +1,192 @@
+// layered-lattice.ts
+// Layered Lattice (8x8x8 shells) data structure with:
+// - Concentric shell interaction (diffusion / attenuation)
+// - Crystal "strings" (fixed + learnable) across voxels
+// - GPU texture atlas packing (64x64 per layer) for WebGL/Canvas
+// - Lightweight diff & RLE compression for mesh transmission
+//
+// Design goals:
+// - Keep core operations O(N) over active voxels rather than full volume when sparse
+// - Allow incremental learning/pruning of strings based on usage (Hebbian-like)
+// - Provide deterministic packing & diff encodings (versioned)
+
+// --- Types -----------------------------------------------------------------
+
+export interface LatticeOptions {
+  layers: number;              // Number of concentric shells (>=1)
+  diffusion?: number;          // Base diffusion coefficient (0..1)
+  radialAttenuation?: number;  // Attenuation per shell step (0..1)
+  maxLearnedStrings?: number;  // Cap on learned strings
+  pruneThreshold?: number;     // Minimum weight before pruning
+  strengthenFactor?: number;   // Weight increment factor
+  decayFactor?: number;        // Weight decay per maintenance step
+  adaptiveDiffusion?: boolean; // Enable entropy-driven adaptation
+}
+
+export interface LearnedStringStats {
+  id: number;
+  length: number;
+  weight: number;
+  learned: boolean;
+  usage: number;
+  lastUpdated: number;
+}
+
+// Packed voxel index: layer * 512 + (z<<6) | (y<<3) | x  (x,y,z in 0..7)
+const VOXELS_PER_LAYER = 512; // 8 * 8 * 8
+
+// --- Utility: Morton code (optional) ---------------------------------------
+// Not strictly required; kept for potential locality improvements.
+function morton3D(x: number, y: number, z: number): number {
+  return (x & 7) | ((y & 7) << 1) | ((z & 7) << 2);
+}
+
+// --- String Table ----------------------------------------------------------
+
+interface InternalString {
+  id: number;
+  points: Uint16Array; // Packed voxel indices (16 bits sufficient: up to layers * 512)
+  weight: number;      // Adaptive strength
+  usage: number;       // Recent activation count
+  learned: boolean;    // True if dynamically added
+  lastUpdated: number; // Epoch ms
+}
+
+/**
+ * Manage crystal strings (fixed & learned). Provides adaptive strengthening & pruning.
+ */
+export class CrystalStringSet {
+  private strings: InternalString[] = [];
+  private nextId = 1;
+
+  constructor(private opts: LatticeOptions) {}
+
+  addFixed(points: number[]): number {
+    return this.add(points, false);
+  }
+
+  addLearned(points: number[]): number {
+    if (this.countLearned() >= (this.opts.maxLearnedStrings ?? 256)) {
+      this.pruneWeakest();
+    }
+    return this.add(points, true);
+  }
+
+  private add(points: number[], learned: boolean): number {
+    const id = this.nextId++;
+    this.strings.push({
+      id,
+      points: Uint16Array.from(points),
+      weight: 1,
+      usage: 0,
+      learned,
+      lastUpdated: Date.now(),
+    });
+    return id;
+  }
+
+  strengthen(id: number, amount = 1): void {
+    const s = this.strings.find((s) => s.id === id);
+    if (!s) return;
+    const factor = this.opts.strengthenFactor ?? 0.05;
+    s.weight += amount * factor;
+    s.usage += amount;
+    s.lastUpdated = Date.now();
+  }
+
+  decay(): void {
+    const decay = this.opts.decayFactor ?? 0.01;
+    this.strings.forEach((s) => {
+      s.weight = Math.max(0, s.weight - decay);
+    });
+    this.pruneByThreshold();
+  }
+
+  getAll(): InternalString[] {
+    return this.strings;
+  }
+
+  stats(): LearnedStringStats[] {
+    return this.strings.map((s) => ({
+      id: s.id,
+      length: s.points.length,
+      weight: +s.weight.toFixed(4),
+      learned: s.learned,
+      usage: s.usage,
+      lastUpdated: s.lastUpdated,
+    }));
+  }
+
+  private pruneByThreshold(): void {
+    const thresh = this.opts.pruneThreshold ?? 0.2;
+    const before = this.strings.length;
+    this.strings = this.strings.filter((s) => !s.learned || s.weight >= thresh);
+    if (before !== this.strings.length) {
+      // Placeholder for logging hook
+    }
+  }
+
+  private pruneWeakest(): void {
+    let minIdx = -1;
+    let minWeight = Infinity;
+    this.strings.forEach((s, i) => {
+      if (s.learned && s.weight < minWeight) {
+        minWeight = s.weight;
+        minIdx = i;
+      }
+    });
+    if (minIdx >= 0) this.strings.splice(minIdx, 1);
+  }
+
+  private countLearned(): number {
+    return this.strings.reduce((n, s) => n + (s.learned ? 1 : 0), 0);
+  }
+}
+
+// --- Lattice Core ----------------------------------------------------------
+
+export class LayeredLattice8 {
+  readonly layers: number;
+  readonly totalVoxels: number;
+  readonly occupancy: Uint32Array;
+  readonly activation: Uint8Array;
+  readonly strings: CrystalStringSet;
+
+  private scratch: Float32Array; // For diffusion step
+  private opts: LatticeOptions;
+  private diffDictIndices: number[][] = [];
+  private diffDictMap: Map<string, number> = new Map();
+  private diffDictCapacity = 64;
+
+  constructor(opts: LatticeOptions) {
+    if (opts.layers < 1) throw new Error('Layers must be >= 1');
+    this.opts = opts;
+    this.layers = opts.layers;
+    this.totalVoxels = this.layers * VOXELS_PER_LAYER;
+    this.occupancy = new Uint32Array(Math.ceil(this.totalVoxels / 32));
+    this.activation = new Uint8Array(this.totalVoxels); // Quantized
+    this.scratch = new Float32Array(this.totalVoxels);
+    this.strings = new CrystalStringSet(opts);
+  }
+
+  pack(layer: number, x: number, y: number, z: number): number {
+    return layer * VOXELS_PER_LAYER + ((z << 6) | (y << 3) | x);
+  }
+
+  unpack(index: number): { layer: number; x: number; y: number; z: number } {
+    const layer = (index / VOXELS_PER_LAYER) | 0;
+    const local = index % VOXELS_PER_LAYER;
+    const x = local & 7;
+    const y = (local >> 3) & 7;
+    const z = (local >> 6) & 7;
+    return { layer, x, y, z };
+  }
+
+  atlasToVoxel(u: number, v: number): { layer: number; x: number; y: number; z: number } | null {
+    if (u < 0 || v < 0) return null;
+    const layer = (v / 64) | 0;
+    if (layer >= this.layers) return null;
+    const localV = v % 64;
+    if (localV >= 8) return null; // Only first 8 rows used
+    const sliceCol = (u / 8) | 0; // z
+    if (sliceCol

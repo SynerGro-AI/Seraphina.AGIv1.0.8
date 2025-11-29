@@ -1,0 +1,20 @@
+/**
+ * Adaptive variance normalization for metric streams.
+ * Maintains rolling mean & std using Welford algorithm over a bounded window size.
+ */
+export interface RollingStats { mean: number; variance: number; std: number; count: number; }
+interface Entry { value: number; }
+export class AdaptiveNormalizer {
+  private window: Entry[] = [];
+  private max: number;
+  private _mean = 0;
+  private _m2 = 0;
+  private _count = 0;
+  constructor(maxWindow = 200) { this.max = maxWindow; }
+  push(v: number) { this._count++; const delta = v - this._mean; this._mean += delta / this._count; const delta2 = v - this._mean; this._m2 += delta * delta2; this.window.push({ value: v }); if (this.window.length > this.max){ this.window.shift(); this.recompute(); } }
+  private recompute(){ this._count=0; this._mean=0; this._m2=0; for(const e of this.window){ this._count++; const d=e.value - this._mean; this._mean += d/this._count; const d2=e.value - this._mean; this._m2 += d * d2; } }
+  stats(): RollingStats { const variance = this._count>1 ? this._m2/this._count : 0; return { mean: this._mean, variance, std: Math.sqrt(variance), count: this._count }; }
+  normalize(v: number, clamp=true){ const { mean, std } = this.stats(); if (std===0) return 0; let z=(v-mean)/(std*3); if(clamp) z=Math.max(-1,Math.min(1,z)); return (z+1)/2; }
+}
+const registry = new Map<string, AdaptiveNormalizer>();
+export function getAdaptiveNormalizer(key: string, window=200){ let n=registry.get(key); if(!n){ n=new AdaptiveNormalizer(window); registry.set(key,n);} return n; }

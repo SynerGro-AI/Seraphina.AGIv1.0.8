@@ -1,0 +1,137 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Card } from '@/components/ui/card';
+
+interface Band { name:string; range:[number,number]; color:string; desc:string; }
+const BANDS:Band[] = [
+  { name:'Delta', range:[0.5,4], color:'#6366f1', desc:'Deep sleep / restoration' },
+  { name:'Theta', range:[4,8], color:'#8b5cf6', desc:'Meditative / creative' },
+  { name:'Alpha', range:[8,12], color:'#10b981', desc:'Calm wakefulness' },
+  { name:'Beta', range:[12,30], color:'#f59e0b', desc:'Active focus' },
+  { name:'Gamma', range:[30,100], color:'#ef4444', desc:'High cognitive integration' }
+];
+
+// Generates synthetic amplitude traces per band
+function synthSample(t:number, band:Band){
+  const [lo,hi] = band.range;
+  const baseFreq = (lo+hi)/2;
+  const phase = t * baseFreq * 0.002; // slow horizontal drift
+  // amplitude modulation + noise
+  const amp = 0.4 + 0.6*Math.sin(phase*0.7 + Math.sin(phase*0.33));
+  const noise = (Math.random()-0.5)*0.25;
+  return Math.max(0, Math.min(1, amp + noise));
+}
+
+const BrainWaveScanner:React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement|null>(null);
+  const [samples,setSamples] = useState<number[][]>(()=> BANDS.map(()=>[]));
+  const batchRef = useRef<any[]>([]);
+  const lastPostRef = useRef<number>(Date.now());
+  const [uploadMessage,setUploadMessage] = useState<string>('');
+
+  useEffect(()=>{
+    let mounted = true;
+    function tick(){
+      const t = performance.now();
+      setSamples(prev=>{
+        const next = prev.map((arr,i)=>{
+          const v = synthSample(t, BANDS[i]);
+          const na = [...arr, v];
+          if (na.length>180) na.shift();
+          return na;
+        });
+        // collect latest synthetic sample for logging
+        const latest = { ts: Date.now(), bands: BANDS.map((b,i)=>({ name:b.name, amp: next[i][next[i].length-1]||0 })) };
+        batchRef.current.push(latest);
+        const now = Date.now();
+        if (now - lastPostRef.current > 5000){
+          const batch = batchRef.current.splice(0,batchRef.current.length);
+          lastPostRef.current = now;
+          if (batch.length){
+            try {
+              const port = (window as any).SERAPHINA_INTERNAL_PORT || 18639;
+              const secret = (window as any).SERAPHINA_INTERNAL_SECRET;
+              fetch(`http://127.0.0.1:${port}/api/neural/brainwaves`, { method:'POST', headers:{ 'Content-Type':'application/json', ...(secret? { Authorization:'Bearer '+secret }: {}) }, body: JSON.stringify({ samples: batch }) }).catch(()=>{});
+            } catch {}
+          }
+        }
+        return next;
+      });
+      if (mounted) requestAnimationFrame(tick);
+    }
+    tick();
+    return ()=>{ mounted=false; };
+  },[]);
+
+  useEffect(()=>{
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const width = canvas.clientWidth; const height = canvas.clientHeight;
+    canvas.width = width * devicePixelRatio; canvas.height = height * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.clearRect(0,0,width,height);
+    const bandHeight = height / BANDS.length;
+    BANDS.forEach((band,bIndex)=>{
+      const arr = samples[bIndex];
+      const y0 = bIndex*bandHeight;
+      // background gradient
+      const grad = ctx.createLinearGradient(0,y0,0,y0+bandHeight);
+      grad.addColorStop(0, band.color+'15'); grad.addColorStop(1, band.color+'03');
+      ctx.fillStyle = grad; ctx.fillRect(0,y0,width,bandHeight);
+      // waveform
+      ctx.beginPath(); ctx.strokeStyle = band.color; ctx.lineWidth=1.2;
+      arr.forEach((v,i)=>{
+        const x = (i/(180-1))*width;
+        const y = y0 + (1-v)*(bandHeight-6) + 3;
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+      // label + current amplitude bar (wifi-like pulse)
+      const current = arr[arr.length-1]||0;
+      ctx.fillStyle = band.color; ctx.font = '10px sans-serif'; ctx.textBaseline='top';
+      ctx.fillText(`${band.name} ${band.range[0]}-${band.range[1]}Hz`, 6, y0+4);
+      const barW = 6; const barCount = 5; const spacing = 4; const baseX = width - (barW+spacing)*barCount - 8;
+      for (let i=0;i<barCount;i++){
+        const level = (i+1)/barCount; const active = current >= level*0.6; // dynamic threshold
+        ctx.fillStyle = active ? band.color : band.color+'33';
+        const bh = level*(bandHeight-12);
+        ctx.fillRect(baseX + i*(barW+spacing), y0 + bandHeight - bh - 4, barW, bh);
+      }
+    });
+  },[samples]);
+
+  function exportRecent(){
+    const flat = samples[0].map((_,idx)=>{
+      const row:any = { index: idx };
+      BANDS.forEach((b,i)=>{ row[b.name] = samples[i][idx]??null; });
+      return row;
+    });
+    const blob = new Blob([JSON.stringify({ bands: BANDS.map(b=>({ name:b.name, range:b.range })), samples: flat },null,2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='brainwave-samples.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  function handleUpload(e:React.ChangeEvent<HTMLInputElement>){
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{ try { JSON.parse(String(reader.result)); setUploadMessage('Data accepted (synthetic parse).'); } catch { setUploadMessage('Invalid JSON.'); } };
+    reader.readAsText(file);
+  }
+
+  return (
+    <Card className="p-3 backdrop-blur-md bg-slate-900/40 border border-slate-500/20 space-y-2">
+      <div className="text-[11px] font-medium tracking-wide text-slate-200">Brain Wave Scanner (Synthetic)</div>
+      <div className="text-[10px] text-slate-400 leading-snug">Simulated band amplitudes (Delta→Gamma). Educational visualization only.</div>
+      <div className="h-56 w-full relative">
+        <canvas ref={canvasRef} className="w-full h-full" />
+      </div>
+      <div className="flex flex-wrap gap-2 text-[10px]">
+        <button onClick={exportRecent} className="px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-600/50 border border-slate-500/30">Export JSON</button>
+        <label className="px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-600/50 border border-slate-500/30 cursor-pointer">Upload Data
+          <input type="file" accept="application/json" onChange={handleUpload} className="hidden" />
+        </label>
+        {uploadMessage && <span className="text-slate-400">{uploadMessage}</span>}
+      </div>
+    </Card>
+  );
+};
+
+export default BrainWaveScanner;

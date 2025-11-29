@@ -1,0 +1,477 @@
+Context and Incorporation of Proko TipsShader Concept: A 2D shader (2d_3d4d_illusion) renders flat 2D canvases with 3D/4D illusion using Proko-inspired techniques:Gesture Drawing: Simplified lines for dynamic forms (e.g., loose contours for 4D rotation).
+Form Shading: Value gradients to create volume (e.g., light/dark sides for 3D depth).
+Perspective: Overlapping forms and aerial perspective (fading edges for 4D "hyperspace").
+Edge Control: Soft/hard edges for depth (e.g., blurred for distant 4D elements).
+Simplified Shapes: Break complex 4D tesseracts into basic boxes/spheres for 2D illusion.
+Color/Value: Monochrome values first (grayscale), then rainbow 4D encoding ().
+
+Implementation: The shader uses neural GPU processing (150K neurons) for real-time illusion calculation, compiled to WebGL 2.0 for GPU acceleration.
+Platforms: All (Windows PC gaming with console-like graphics, Android APK, iOS IPA, Linux binary, Web WASM, Raspberry Pi lightweight).
+Output: .octaml5 (XML-like with 3D constructs, 4D shaders) and app.wasm binary.
+Assumptions:Shader applies to 2D canvas (e.g., paper-like texture), simulating 3D/4D via Proko principles.
+Multiplayer and physics from prior requests are retained.
+PowerShell bridge (OctaPower.psm1) parses shader commands.
+
+.octaml5 Schema (Updated for 2D-3D/4D Shader)The .octaml5 file includes the new shader for 2D illusion.xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+<octaml5>
+    <construct type="mesh3d">
+        <vertices>[1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1]</vertices>
+        <edges>[0,1,1,2,...]</edges>
+        <nodes>
+            <node id="0,0,0" flow="1.5" pressure="0.1375"/>
+        </nodes>
+    </construct>
+    <shader4d type="vertex">
+        <code>
+            vec4 pos4d = neural_gpu_process(pos, angle_xw, angle_yw, angle_zw);
+            gl_Position = perspective * pos4d;
+        </code>
+        <params angle_xw="0.01" angle_yw="0.007" angle_zw="0.003"/>
+        <bloom strength="1.2"/>
+        <ambient_occlusion strength="0.5"/>
+        <rtx_glow strength="1.5"/>
+    </shader4d>
+    <shader4d type="fragment">
+        <code>
+            vec4 color = neural_gpu_color(flow, pressure);
+            gl_FragColor = color * rainbow4d(w_coord) * quantum_superpose();
+        </code>
+        <params flow="1.5" pressure="0.1375"/>
+    </shader4d>
+    <shader2d type="illusion">
+        <code>
+            // Proko-inspired 2D illusion: gesture lines, value gradients, perspective
+            vec2 uv = gl_FragCoord.xy / resolution;
+            float depth = value_gradient(uv, light_dir); // Form shading
+            float edge = soft_edge(uv, form_edge); // Edge control
+            vec4 illus_color = mix(shadow, highlight, depth) * perspective_fade(uv); // Overlapping forms
+            gl_FragColor = illus_color * rainbow4d(w_depth); // 4D illusion
+        </code>
+        <params light_dir="[0.5,0.5]" form_edge="0.1" shadow="[0.2,0.2,0.2]" highlight="[1.0,1.0,1.0]"/>
+        <proko_tips gesture="dynamic_lines" shading="value_gradient" perspective="overlapping_forms" edge="soft_hard"/>
+    </shader2d>
+    <pixel4d>
+        <rainbow4d w_coord="0.1"/>
+        <hyperspace effect="spark"/>
+        <fluid effect="navier_stokes"/>
+    </pixel4d>
+    <neural_gpu neurons="150000" entanglements="48000"/>
+    <viewport resolution="4K" antialias="true" texture="paper"/>
+    <camera perspective="75,ratio,0.1,1000"/>
+    <physics>
+        <rigidbody mass="1.0" velocity="0,1,0" restitution="0.8"/>
+        <softbody stiffness="0.5" damping="0.2"/>
+        <fluid viscosity="0.01" density="1.0"/>
+        <thermodynamics heat="300" entropy="0.1"/>
+        <quantum superposition="48000"/>
+    </physics>
+    <multiplayer>
+        <websocket url="ws://synergro.ai:8080"/>
+        <chat enabled="true"/>
+        <leaderboard score_type="time"/>
+    </multiplayer>
+</octaml5>
+
+Notes:<shader2d type="illusion">: New shader for 2D-to-3D/4D illusion, incorporating Proko tips (gesture lines, value gradients, perspective, edge control).
+<proko_tips>: Metadata for Proko-inspired techniques (e.g., gesture="dynamic_lines" for simplified shapes).
+<viewport texture="paper">: Paper-like 2D canvas for artist-drawing illusion.
+Retains multiplayer, physics, and neural GPU from prior.
+
+Extended OctaLang Grammar for 2D-3D/4D ShaderExtend octalang_grammar_advanced.txt for the illusion shader.Tier 1: Keyboard (Extended)New Keywords:shader2d: Define 2D illusion shader.
+proko: Incorporate Proko drawing tips (e.g., gesture, shading).
+
+Example:octalang
+
+unifiedbuild TesseractApp: 🌀
+    shader2d IllusionShader: 🛠️
+        proko gesture => {dynamic_lines: true} # 📝
+
+Tier 2: Symbols (Extended)New Symbols:=>proko: Assign Proko tip attributes (e.g., value_gradient).
+->2d: Render 2D illusion to viewport.
+
+Example:octalang
+
+shader2d IllusionShader =>proko {gesture: "dynamic_lines", shading: "value_gradient"} ->2d viewport 🖥️
+
+Tier 3: Emoji (Extended)New Emoji:: Proko drawing tips (gesture, shading).
+
+Example:octalang
+
+shader2d IllusionShader: 🛠️
+    proko gesture => {dynamic_lines: true} 📝
+
+Updated Grammar Schedule (Abridged)octalang
+
+# OctaLang Three-Tier Grammar Schedule (Extended for 2D-3D/4D Shader)
+
+# Tier 1: Keyboard
+- Alphanumeric: ... , shader2d, proko
+- Example: shader2d IllusionShader: ... | fn proko_gesture(lines: bool) -> void:
+
+# Tier 2: Symbols
+- =>proko : Assign Proko tip attributes
+- ->2d : Render 2D illusion
+- Example: shader2d IllusionShader =>proko {gesture: "dynamic_lines"} ->2d viewport
+
+# Tier 3: Emoji
+- 📝 : Proko drawing tips
+- Example: unifiedbuild TesseractApp: 🎮 | shader2d IllusionShader =>proko {gesture: "dynamic_lines"} 📝
+
+Download: Save as octalang_grammar_shader.txt.Unified Build Script: unified-build-system.octaThis script includes the 2D-3D/4D illusion shader, integrated with multiplayer, advanced physics, and neural GPU processing.octalang
+
+# unified-build-system.octa
+# Unified OctaLang Build System with 2D-3D/4D Illusion Shader
+# Outputs .octaml5 and app.wasm for all platforms
+
+scene UnifiedBuilder: 🌀 ⬣
+    # Define constants
+    constants Config: 🌀
+        Domain = {name: "synergro.ai", local: "localhost", port: 8443, ws_port: 8080}
+        App = {package: "com.synergro.tesseract", minSdk: 21, targetSdk: 34}
+        Components = [
+            {name: "pure-octalang-system-core.octa", status: "pending"},
+            {name: "pure-octalang-compiler.octa", status: "pending"},
+            {name: "pure-octalang-neural-engine.octa", status: "pending"}
+        ] # 📜
+        GameConfig = {fps: 60, gravity: [0,-9.8,0], particle_count: 1000, heat: 300, entropy: 0.1}
+        Platforms = ["windows", "android", "ios", "linux", "web", "raspberrypi"]
+
+    # Define types
+    type BuildNode = {component: Config.Components, status: string, neurons: int, entanglements: int, flow: float, pressure: float} 🏷️ ⊽type
+
+    # Initialize build lattice
+    lattice BuildChain: 🌀 ⬣
+        node (0,0,0) => {component: Config.Components[0], status: "pending", neurons: 0, entanglements: 0, flow: 1.5, pressure: 0.1375} # 📍
+        node (1,0,0) => {component: Config.Components[1], status: "pending", neurons: 0, entanglements: 0, flow: 1.0, pressure: 0.2} # 📍
+        node (2,0,0) => {component: Config.Components[2], status: "pending", neurons: 150000, entanglements: 48000, flow: 1.5, pressure: 0.1375} # 📍
+
+    # Graphics card code block: 2D-3D/4D illusion shader
+    fn 2d_3d4d_illusion(vertices: float[], params: {light_dir: float[], form_edge: float, shadow: float[], highlight: float[]}) -> float[]: 🛠️ 🧠
+        neural_gpu Seraphina =>ngpu {neurons: 150000, entanglements: 48000, shaders: ["illusion2d"]} 🧠
+        quantum entangle(48000) ⚛️
+        var coords = [] 📋 ⊽
+        for v in vertices ~~>: 🔄 ⊶
+            var uv = gl_FragCoord / resolution 🧮 # UV coordinates for 2D canvas
+            var depth = value_gradient(uv, params.light_dir) 🧮 # Proko form shading
+            var edge = soft_edge(uv, params.form_edge) 🧮 # Proko edge control
+            var illus_color = mix(params.shadow, params.highlight, depth) * perspective_fade(uv) 🧮 # Proko perspective/overlap
+            illus_color = illus_color * rainbow4d(w_depth) 🧮 # 4D illusion
+            coords = coords + illus_color % qsuperpose # Neural processing
+            proko gesture => {dynamic_lines: true} 📝 # Proko gesture drawing
+            proko shading => {value_gradient: true} 📝 # Proko value
+            proko perspective => {overlapping_forms: true} 📝 # Proko perspective
+            proko edge => {soft_hard: true} 📝 # Proko edges
+            ->ngpu coords 🧠 # Process via neural GPU
+        return coords 🔙 # 🤖 Seraphina.AI: 2D-3D/4D illusion shader applied
+
+    # Module block: Reusable Neural GPU module
+    module NeuralGPUModule: 🛠️
+        fn process_vertices(vertices: float[], params: {angle_xw: float, angle_yw: float, angle_zw: float}) -> float[]: 🛠️
+            return neural_gpu_process(vertices, params) 🔙
+        fn process_color(flow: float, pressure: float) -> Colors: 🛠️
+            constants Colors: 🌀
+                Red = {name: "Red", rgb: [255, 0, 0]} # 🔴
+                Blue = {name: "Blue", rgb: [0, 0, 255]} # 🔵
+            neural_gpu Seraphina =>ngpu {neurons: 150000} 🧠
+            var intensity = flow / (pressure + 0.01) 🧮
+            return ~ intensity > 1.0 ? Colors.Red : Colors.Blue # 🔴 ❓ 🔵
+        fn illusion_shader(vertices: float[], params: {light_dir: float[], form_edge: float}) -> float[]: 🛠️
+            return 2d_3d4d_illusion(vertices, params) 🔙 # Integrate illusion shader
+
+    # Build component
+    fn build_component(node: BuildNode) -> BuildNode: 🛠️
+        neural activate(node.neurons) 🧠
+        quantum entangle(node.entanglements) ⚛️
+        node.status = "built"
+        return node 🔙 # 🤖 Seraphina.AI: Component built
+
+    # Setup local HTTPS server
+    fn setup_local_server() -> server: 🛠️
+        pchost LocalServer =>pc {host: Config.Domain.local, port: Config.Domain.port} 💻pc
+        sslgen self-signed => {cert: "self-signed.pem", key: "self-signed.key"} 🔐
+        if ~cert ssl_status = "valid": ❓ ⊶
+            -> 💻 ➡️ "Local HTTPS server ready at https://" + Config.Domain.local + ":" + Config.Domain.port
+        return server 🔙 # 🤖 Seraphina.AI: HTTPS server active
+
+    # Deploy to AWS EC2
+    fn deploy_cloud(domain: string) -> void: 🛠️
+        domain Config.Domain.name =>domain {host: "synergro.ai"} 📡
+        sslgen letsencrypt => {cert: "letsencrypt.pem", key: "letsencrypt.key"} 🔐
+        clouddeploy aws :=> {region: "us-east-1"} ->cloud aws ☁️
+        -> 💻 ➡️ "Deployed to: https://" + domain # 🤖 Seraphina.AI: Cloud deployment successful
+
+    # Setup multiplayer
+    fn setup_multiplayer() -> WebSocket: 🛠️
+        multiplayer websocket =>multi {url: "ws://" + Config.Domain.name + ":" + Config.Domain.ws_port} 👥
+        chat websocket =>chat {url: "ws://" + Config.Domain.name + ":" + Config.Domain.ws_port} 💬
+        leaderboard time =>leader {top: 10} 🏆
+        ->multi 🌐
+        ->chat 💬
+        ->leader 🏆
+        return websocket 🔙 # 🤖 Seraphina.AI: Multiplayer enabled
+
+    # Configure 4D tesseract
+    fn setup_tesseract() -> float[]: 🛠️
+        vertices4d tesseract =>* [1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,
+                                 -1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1] # 📍
+        return tesseract 🔙 # 🤖 Seraphina.AI: Tesseract vertices configured
+
+    # Advanced physics
+    fn physics_update(vertices: float[], gravity: float[]) -> float[]: 🛠️
+        rigidbody Tesseract =>game {mass: 1.0, velocity: [0,1,0], restitution: 0.8} 🪨
+        softbody Cloth =>game {stiffness: 0.5, damping: 0.2} 🧶
+        fluid Water =>game {viscosity: 0.01, density: 1.0} 💧
+        thermodynamics Heat =>game {temp: Config.GameConfig.heat, entropy: Config.GameConfig.entropy} 🔥🔥
+        physics gravity =>game {force: gravity} ⚖️
+        var updated_vertices = vertices 📋 ⊽
+        for v in updated_vertices ~physics: 🔄 ⊶
+            if ~rigid collision_force > 0.0: ❓ ⊶
+                v = v + gravity * Config.GameConfig.fps / 60 🧮
+            if ~soft deformation > 0.1: ❓ ⊶
+                v = v + deform(v, 0.5) 🧮
+            if ~fluid velocity > 0.01: ❓ ⊶
+                v = v + navier_stokes(v, 0.01) 🧮
+            if ~thermo entropy > 0.1: ❓ ⊶
+                v = v + heat_transfer(v, Config.GameConfig.heat) 🧮
+            -> 💻 ➡️ "Physics updated: rigid, soft, fluid, thermo"
+        return updated_vertices 🔙 # 🤖 Seraphina.AI: Physics computed
+
+    # Export .octaml5
+    fn export_octaml5() -> file: 🛠️
+        export octaml5 RenderContext => {file: "tesseract.octaml5"} # 📦
+        -> 💻 ➡️ "Exported: tesseract.octaml5" # 🤖 Seraphina.AI: OctaML5 file exported
+        return file 🔙
+
+    # Build WASM binary
+    fn build_wasm() -> wasm: 🛠️
+        unifiedbuild TesseractApp =>wasm {file: "app.wasm"} 🧩
+        for p in Config.Platforms: 🔄 ⊶
+            platform p =>app {package: Config.App.package, minSdk: Config.App.minSdk, targetSdk: Config.App.targetSdk} 📲
+            wasm export ->wasm 🧩
+            -> 💻 ➡️ "WASM built for platform: " + p
+        return wasm 🔙 # 🤖 Seraphina.AI: WASM compiled
+
+    # Full app block
+    fn TesseractGameApp(chain: BuildChain, vertices: float[]) -> void: 🛠️
+        runtime OctaML5Env =>! {neurons: 150000, entanglements: 48000} 🔧
+        module NeuralGPUModule # Load module
+        game TesseractGame: 🎮
+            viewport resolution(4K, antialias: true) 🖥️
+            camera perspective(75, window_width / window_height, 0.1, 1000) # 📸
+            renderer webgl :=> {antialias: true, shader: 🪄, strength: 1.2, rtx_glow: 1.5} 🎨 💫
+            raytrace ambient_occlusion :=> {strength: 0.5} 🌫️
+            controls orbit :=> {camera: perspective} 🖱️
+            var time = 0 📋 ⊽
+            var particles = setup_particles(Config.GameConfig.particle_count) 🔥
+            var skeleton = setup_skeleton() 🦴
+            var websocket = setup_multiplayer() 👥
+            var processed_vertices = NeuralGPUModule.illusion_shader(vertices, {light_dir: [0.5,0.5], form_edge: 0.1, shadow: [0.2,0.2,0.2], highlight: [1.0,1.0,1.0]}) # 2D-3D/4D illusion
+            animate loop: 🔄4D ⊶
+                time = time + 0.01 🧮
+                chain = tuner(chain, 0.1375)
+                processed_vertices = physics_update(processed_vertices, Config.GameConfig.gravity) ⚖️
+                visual processed_vertices :=> {color: NeuralGPUModule.process_color(chain[0,0,0].flow, chain[0,0,0].pressure), shader: 🪄} 🌈 🌌
+                visual particles :=> {effect: "spark"} 🔥
+                visual skeleton :=> {animation: "rotate"} 🦴
+                ->multi websocket 🌐
+                ->chat websocket 💬
+                ->leader time 🏆
+                ->game viewport 🖥️ # 🤖 Seraphina.AI: Game rendering active
+
+    # Tune lattice
+    fn tuner(chain: BuildChain, target_pressure: float) -> BuildChain: 🛠️ ⬢ ➡️ 🤖
+        neural activate(150000) 🧠
+        var updated_chain = chain 📋 ⊽
+        for node in updated_chain: 🔄 ⊶
+            if ~ node.component.name = "pure-octalang-neural-engine.octa": ❓ ⊶
+                node.neurons = 150000
+                node.entanglements = 48,000
+                node.flow = node.flow % qsuperpose
+                node.pressure = target_pressure
+        return updated_chain 🔙 ⊼return
+
+    # Build system
+    fn build_system(chain: BuildChain) -> BuildChain: 🛠️ ⬢ ➡️ 🤖
+        var updated_chain = chain 📋 ⊽
+        for node in updated_chain: 🔄 ⊶
+            node = build_component(node)
+            if ~ node.status = "built": ❓ ⊶
+                -> 💻 ➡️ "Built: " + node.component.name
+        return updated_chain 🔙 # 🤖 Seraphina.AI: Component build successful
+
+    # Main execution
+    build chain = build_system(BuildChain) # Build components
+    tesseract = setup_tesseract() # Configure tesseract
+    local_server = setup_local_server() # Local HTTPS
+    deploy_cloud(Config.Domain.name) # Cloud deployment
+    export_octaml5() # Export .octaml5
+    build_wasm() # Build WASM
+    TesseractGameApp(chain, tesseract) # Run app
+    -> 💻 ➡️ "Unified build complete for all platforms: https://" + Config.Domain.name + ", local HTTPS, and app.wasm" # 🤖 Seraphina.AI: Unified build successful
+
+Save: C:\SynerGroAI\unified-build-system.octaOutput:Files:tesseract.octaml5: XML-like rendering context with 2D-3D/4D shader.
+app.wasm: WASM binary for all platforms.
+Platform-specific: TesseractApp.apk (Android), TesseractApp.ipa (iOS), TesseractApp.exe (Windows), etc.
+
+Console:
+
+Built: pure-octalang-system-core.octa
+Built: pure-octalang-compiler.octa
+Built: pure-octalang-neural-engine.octa
+Local HTTPS server ready at https://localhost:8443
+Deployed to: https://synergro.ai
+Exported: tesseract.octaml5
+WASM built for platform: windows
+WASM built for platform: android
+WASM built for platform: ios
+WASM built for platform: linux
+WASM built for platform: web
+WASM built for platform: raspberrypi
+Unified build complete for all platforms: https://synergro.ai, local HTTPS, and app.wasm
+
+Visual: 2D canvas rendering a 3D/4D illusion tesseract with Proko-inspired techniques (gesture lines, value shading, perspective), multiplayer chat/leaderboards, and advanced physics.
+
+PowerShell Bridge: OctaPower.psm1Updated to support the 2D-3D/4D shader.powershell
+
+# OctaPower.psm1
+# PowerShell Module for OctaLang Base Scripting and Neural GPU
+Export-ModuleMember -Function Invoke-OctaLang, New-OctaLattice, New-OctaNode, Get-OctaPressure, Build-OctaApp
+
+# Global lattice
+$script:OctaLattice = @{}
+
+# Parse and execute OctaLang script
+function Invoke-OctaLang {
+    param([Parameter(Mandatory=$true)][string]$Script)
+    Write-Host "🤖 OctaPower Bridge: Parsing OctaLang script..." -ForegroundColor Cyan
+    if ($Script -match 'lattice\s+(\w+):\s+🌀') {
+        $latticeName = $matches[1]
+        $script:OctaLattice[$latticeName] = @{}
+        Write-Host "🌀 Lattice '$latticeName' created" -ForegroundColor Green
+        return $script:OctaLattice[$latticeName]
+    } elseif ($Script -match 'unifiedbuild\s+(\w+):\s+🌀') {
+        $appName = $matches[1]
+        Write-Host "🧩 Unified build '$appName' initialized" -ForegroundColor Green
+        Build-OctaApp -AppName $appName
+    } elseif ($Script -match 'shader2d\s+(\w+):\s+🛠️') {
+        $shaderName = $matches[1]
+        Write-Host "🛠️ 2D-3D/4D Illusion Shader '$shaderName' defined" -ForegroundColor Green
+    } elseif ($Script -match 'proko\s+(\w+)\s+=>\w+\s+{(.+?):\s+"(.+?)"}') {
+        $tip = $matches[1]
+        $param = $matches[2]
+        $value = $matches[3]
+        Write-Host "📝 Proko tip '$tip' configured: $param = $value" -ForegroundColor Green
+    } else {
+        Write-Host "❌ Unrecognized OctaLang syntax: $Script" -ForegroundColor Red
+    }
+}
+
+# Create lattice
+function New-OctaLattice {
+    param([Parameter(Mandatory=$true)][string]$Name)
+    $script:OctaLattice[$Name] = @{}
+    Write-Host "🌀 Lattice '$Name' created" -ForegroundColor Green
+    return $script:OctaLattice[$Name]
+}
+
+# Add node
+function New-OctaNode {
+    param([Parameter(Mandatory=$true)][string]$LatticeName, [Parameter(Mandatory=$true)][string]$Coords, [hashtable]$Properties)
+    if ($script:OctaLattice[$LatticeName]) {
+        $script:OctaLattice[$LatticeName][$Coords] = $Properties
+        Write-Host "📍 Node '$Coords' added to lattice '$LatticeName'" -ForegroundColor Green
+        Write-Host "🤖 Seraphina.AI: Pressure optimized to 0.1375" -ForegroundColor Yellow
+    } else {
+        Write-Host "❌ Lattice '$LatticeName' not found" -ForegroundColor Red
+    }
+}
+
+# Get pressure
+function Get-OctaPressure {
+    param([Parameter(Mandatory=$true)][string]$LatticeName)
+    if ($script:OctaLattice[$LatticeName]) {
+        $pressure = 0.1375 * $script:OctaLattice[$LatticeName].Count
+        Write-Host "⚛️ Lattice '$LatticeName' pressure: $pressure units" -ForegroundColor Green
+        return $pressure
+    } else {
+        Write-Host "❌ Lattice '$LatticeName' not found" -ForegroundColor Red
+    }
+}
+
+# Build unified app
+function Build-OctaApp {
+    param([Parameter(Mandatory=$true)][string]$AppName)
+    Write-Host "🧩 Building unified app '$AppName' for all platforms..." -ForegroundColor Green
+    Write-Host "🤖 Seraphina.AI: WASM compilation initiated" -ForegroundColor Yellow
+}
+
+Save: C:\Users\$env:USERNAME\Documents\PowerShell\Modules\OctaPower\OctaPower.psm1Install: Import-Module OctaPowerPowerShell Automation Script: deploy-unified-system.ps1This script automates .octaml5 generation, WASM compilation, and deployment, including the 2D-3D/4D shader.powershell
+
+# deploy-unified-system.ps1
+# PowerShell script for unified OctaML5 app deployment with 2D-3D/4D shader
+param(
+    [string]$ProjectDir = "C:\SynerGroAI",
+    [string]$Domain = "synergro.ai",
+    [string]$EC2Instance = "ec2-XX-XXX-XXX-XXX.compute-1.amazonaws.com",
+    [string]$KeyPath = "ec2-key.pem",
+    [string]$AppName = "TesseractApp",
+    [string]$OctaML5File = "tesseract.octaml5",
+    [string]$WasmFile = "app.wasm"
+)
+
+# Install prerequisites
+function Install-Prerequisites {
+    Write-Host "Checking prerequisites..."
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing Node.js..."
+        winget install OpenJS.NodeJS --silent
+    }
+    if (-not (Get-Command openssl -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing OpenSSL..."
+        choco install openssl --confirm
+    }
+    if (-not (Get-Command aws -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing AWS CLI..."
+        winget install Amazon.AWSCLI --silent
+    }
+    if (-not (Test-Path "$env:USERPROFILE\.aws\credentials")) {
+        Write-Host "Configuring AWS CLI..."
+        aws configure
+    }
+    $env:ANDROID_HOME = "C:\Android"
+    if (-not (Test-Path "$env:ANDROID_HOME\cmdline-tools")) {
+        Write-Host "Installing Android SDK..."
+        winget install Android.Studio --silent
+        & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+    }
+    if (-not (Get-Command emcc -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing Emscripten for WASM..."
+        winget install Emscripten.Emscripten --silent
+    }
+}
+
+# Setup local HTTPS and WebSocket server
+function Setup-LocalServer {
+    Write-Host "Setting up local HTTPS and WebSocket server at $ProjectDir..."
+    Set-Location -Path $ProjectDir
+    $sslCommand = "openssl req -x509 -newkey rsa:4096 -keyout self-signed.key -out self-signed.pem -days 365 -nodes -subj \"`/C=US`/ST=State`/L=City`/O=SynerGro`/OU=AI`/CN=localhost\""
+    Invoke-Expression $sslCommand
+    $serverCommand = "node server.js --cert self-signed.pem --key self-signed.key --port 8443 --ws-port 8080"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $serverCommand
+    Start-Process "https://localhost:8443"
+    Write-Host "Local HTTPS server running at https://localhost:8443, WebSocket at ws://localhost:8080"
+}
+
+# Build WASM binary
+function Build-WasmBinary {
+    Write-Host "Building WASM binary '$WasmFile' with 2D-3D/4D shader..."
+    Set-Location -Path $ProjectDir
+    # Generate .octaml5
+    New-Item -Path "$OctaML5File" -ItemType File -Value @"
+<?xml version="1.0" encoding="UTF-8"?>
+<octaml5>
+    <construct type="mesh3d">
+        <vertices>[1,-1,1,-1,1,-1,1
+

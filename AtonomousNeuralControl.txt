@@ -1,0 +1,146 @@
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { badgeClasses } from '@/components/ui/badge-span';
+import { Progress } from '@/components/ui/progress';
+import { Brain, Zap, Settings, Activity } from 'lucide-react';
+
+interface AutonomousState {
+  isActive: boolean;
+  learningRate: number;
+  adaptationLevel: number;
+  decisionsMade: number;
+  efficiency: number;
+  autonomyLevel: number;
+}
+
+export const AutonomousNeuralController: React.FC = () => {
+  const [state, setState] = useState<AutonomousState>({
+    isActive: false,
+    learningRate: 0,
+    adaptationLevel: 0,
+    decisionsMade: 0,
+    efficiency: 100,
+    autonomyLevel: 0
+  });
+  const [log, setLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (state.isActive) {
+      interval = setInterval(() => {
+        setState(prev => ({
+          ...prev,
+          learningRate: Math.min(100, prev.learningRate + Math.random() * 2),
+          adaptationLevel: Math.min(100, prev.adaptationLevel + Math.random() * 1.5),
+          decisionsMade: prev.decisionsMade + Math.floor(Math.random() * 3),
+          efficiency: Math.max(85, Math.min(100, prev.efficiency + (Math.random() - 0.5) * 2)),
+          autonomyLevel: Math.min(100, prev.autonomyLevel + Math.random() * 0.8)
+        }));
+
+        if (Math.random() > 0.7) {
+          const decisions = [
+            'Optimized neural pathway efficiency',
+            'Adapted to new data pattern',
+            'Increased processing speed',
+            'Enhanced quantum coherence',
+            'Balanced system resources',
+            'Improved learning algorithm'
+          ];
+          const decision = decisions[Math.floor(Math.random() * decisions.length)];
+          setLog(prev => [`${new Date().toLocaleTimeString()}: ${decision}`, ...prev.slice(0, 9)]);
+        }
+      }, 500);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [state.isActive]);
+
+  const toggleAutonomy = () => {
+    setState(prev => ({ ...prev, isActive: !prev.isActive }));
+    setLog(prev => [
+      `${new Date().toLocaleTimeString()}: Autonomous mode ${!state.isActive ? 'ACTIVATED' : 'DEACTIVATED'}`,
+      ...prev.slice(0, 9)
+    ]);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 border-purple-500/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-purple-400" />
+            Autonomous Neural Controller
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Button 
+              onClick={toggleAutonomy}
+              className={`${state.isActive ? 'bg-red-600 hover:bg-red-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              {state.isActive ? 'Deactivate' : 'Activate'} Autonomy
+            </Button>
+            <span className={badgeClasses(state.isActive ? 'default' : 'secondary')}>
+              {state.isActive ? 'AUTONOMOUS' : 'MANUAL'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-green-400" />
+                <span className="text-sm">Learning Rate</span>
+              </div>
+              <Progress value={state.learningRate} className="h-2" />
+              <div className="text-sm text-green-400">{state.learningRate.toFixed(1)}%</div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-blue-400" />
+                <span className="text-sm">Adaptation</span>
+              </div>
+              <Progress value={state.adaptationLevel} className="h-2" />
+              <div className="text-sm text-blue-400">{state.adaptationLevel.toFixed(1)}%</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm">Autonomy Level</div>
+              <Progress value={state.autonomyLevel} className="h-2" />
+              <div className="text-sm text-purple-400">{state.autonomyLevel.toFixed(1)}%</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-3 bg-gray-900/20 rounded">
+              <div className="text-2xl font-bold text-cyan-400">{state.decisionsMade}</div>
+              <div className="text-sm text-gray-400">Decisions Made</div>
+            </div>
+            <div className="text-center p-3 bg-gray-900/20 rounded">
+              <div className="text-2xl font-bold text-yellow-400">{state.efficiency.toFixed(1)}%</div>
+              <div className="text-sm text-gray-400">System Efficiency</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-black/20 border-purple-500/30">
+        <CardHeader>
+          <CardTitle>Autonomous Decision Log</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {log.map((entry, index) => (
+              <div key={index} className="text-sm font-mono text-purple-200 bg-purple-900/10 p-2 rounded">
+                {entry}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};

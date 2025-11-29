@@ -1,0 +1,294 @@
+// aurrelia-pico-mesh-miner.js
+// Aurrelia.AI: Self-optimizing, pico-mesh learning, F2Pool mining pipeline
+// Author: Wilsonof Orange + GitHub Copilot
+
+
+const crypto = require('crypto');
+const createStratumClient = require('stratum-client');
+
+function reverseBytes(hex) {
+  const buf = Buffer.from(hex, 'hex');
+  buf.reverse();
+  return buf.toString('hex');
+}
+
+function doubleSha256(hex) {
+  const buf = Buffer.from(hex, 'hex');
+  const h1 = crypto.createHash('sha256').update(buf).digest();
+  const h2 = crypto.createHash('sha256').update(h1).digest();
+  return h2.toString('hex');
+}
+
+function buildCoinbase(coinb1, extranonce1, extranonce2, coinb2) {
+  return coinb1 + extranonce1 + extranonce2 + coinb2;
+}
+
+function buildMerkleRoot(coinbaseTx, merkleBranches) {
+  let merkle = doubleSha256(coinbaseTx);
+  for (let branch of merkleBranches) {
+    merkle = doubleSha256(merkle + branch);
+  }
+  return merkle;
+}
+
+function buildBlockHeader(job, merkleRoot, nTime, nbits, nonce) {
+  // All little endian hex
+  const ver = reverseBytes(job.version.padStart(8, '0'));
+  const prev = reverseBytes(job.prevhash);
+  const merk = reverseBytes(merkleRoot);
+  const time = reverseBytes(nTime.padStart(8, '0'));
+  const bts = reverseBytes(nbits.padStart(8, '0'));
+  const non = reverseBytes(nonce.padStart(8, '0'));
+  return ver + prev + merk + time + bts + non;
+}
+
+function nbitsToTarget(nbits) {
+  // Convert compact nbits to full target (BigInt)
+  const n = parseInt(nbits, 16);
+  const exponent = n >>> 24;
+  const mantissa = n & 0xffffff;
+  return BigInt(mantissa) << (8n * (BigInt(exponent) - 3n));
+}
+
+function hashToOctonion(dataStr) {
+  let hash = 0;
+  for (let i = 0; i < dataStr.length; i++) {
+    hash = ((hash << 5) - hash) + dataStr.charCodeAt(i);
+    hash |= 0;
+  }
+  const coeffs = [];
+  for (let i = 0; i < 8; i++) {
+    const chunk = (hash >>> (i * 4)) & 0xFFFF;
+    coeffs.push((chunk % 10000 / 5000 - 1));
+  }
+  return { coeffs };
+}
+
+class SimpleOcto {
+  constructor(coeffs) { this.coeffs = coeffs; }
+  norm() { return Math.sqrt(this.coeffs.reduce((s, c) => s + c * c, 0)); }
+  add(other) { return new SimpleOcto(this.coeffs.map((c, i) => c + other.coeffs[i])); }
+  multiply(other) {
+    const prod = new Array(8).fill(0);
+    prod[0] = this.coeffs[0] * other.coeffs[0] - this.coeffs.slice(1).reduce((s, c, i) => s + c * other.coeffs[i + 1], 0);
+    for (let i = 1; i < 8; i++) prod[i] = this.coeffs[0] * other.coeffs[i] + other.coeffs[0] * this.coeffs[i];
+    return new SimpleOcto(prod);
+  }
+  power(d = 2) { return d === 2 ? this.multiply(this) : this; }
+}
+
+class AurreliaNode {
+  constructor(id, mesh) {
+    this.octo = new SimpleOcto(hashToOctonion(`node${id}`).coeffs);
+    this.freq = 432;
+    this.successes = 0;
+    this.attempts = 0;
+    this.mesh = mesh;
+    this.id = id;
+  }
+  generateNonce(seedStr) {
+    const c = new SimpleOcto(hashToOctonion(seedStr).coeffs);
+    const theta = 2 * Math.PI * (this.freq / 432);
+    let z = new SimpleOcto([0, 0, 0, 0, 0, 0, 0, 0]);
+    z = z.power(2).add(c.multiply(new SimpleOcto([Math.cos(theta), Math.sin(theta), 0, 0, 0, 0, 0, 0])));
+    z = z.power(2).add(c);
+    const nonce = Math.floor(Math.abs(z.coeffs[0]) * 0xFFFFFFFF) >>> 0;
+    return { nonce, norm: z.norm() };
+  }
+  verifyNonce(nonceStr, seedStr) {
+    const c = new SimpleOcto(hashToOctonion(seedStr + nonceStr).coeffs);
+    const theta = 2 * Math.PI * (this.freq / 432);
+    let z = new SimpleOcto([0, 0, 0, 0, 0, 0, 0, 0]);
+    for (let i = 0; i < 50; i++) {
+      z = z.power(2).add(c.multiply(new SimpleOcto([Math.cos(8 * theta * i), Math.sin(8 * theta * i), 0, 0, 0, 0, 0, 0])));
+      if (z.norm() > 2) return { valid: false, norm: z.norm() };
+    }
+    return { valid: true, norm: z.norm() };
+  }
+  feedback(success, sweepSeed = 0) {
+    this.attempts++;
+    if (success) this.successes++;
+    // Share learning with pico mesh
+    if (this.mesh) this.mesh.shareLearning(this.id, this.freq, success);
+    // Self-optimize: if success rate drops, sweep freq deterministically
+    if (this.attempts % 32 === 0) {
+      const rate = this.successes / this.attempts;
+      if (rate < 0.01) this.freq = 432 + (sweepSeed % 96); // deterministic sweep
+      this.successes = 0;
+      this.attempts = 0;
+    }
+  }
+  receiveMeshUpdate(freq) {
+    // Optionally bias toward mesh consensus frequency
+    this.freq = (this.freq + freq) / 2;
+  }
+}
+
+class PicoMesh {
+  constructor(size) {
+    this.size = size;
+    this.freqStats = Array(size).fill(432);
+    this.successStats = Array(size).fill(0);
+  }
+  shareLearning(nodeId, freq, success) {
+    this.freqStats[nodeId] = freq;
+    if (success) this.successStats[nodeId]++;
+    // Share best freq to all nodes every 64 attempts
+    if (this.successStats.reduce((a,b)=>a+b,0) % 64 === 0) {
+      const bestIdx = this.successStats.indexOf(Math.max(...this.successStats));
+      const bestFreq = this.freqStats[bestIdx];
+      for (let i = 0; i < this.size; i++) {
+        if (i !== bestIdx) this.freqStats[i] = (this.freqStats[i] + bestFreq) / 2;
+      }
+    }
+  }
+  getFreq(nodeId) {
+    return this.freqStats[nodeId];
+  }
+}
+
+
+// Real, persistent, event-driven manifold (up to 5 million nodes, built inward)
+const MAX_NODES = 5000000;
+const { QuantumTuner, NeuralNode } = require('./octonion-real-processor.js');
+const mesh = new PicoMesh(MAX_NODES);
+const lattice = [];
+const manifold = [];
+const quantumTuner = new QuantumTuner();
+let nodeCount = 0;
+let bytesProcessed = 0;
+let lastThroughputLog = Date.now();
+
+
+class F2PoolAurreliaPipeline {
+  constructor(user) {
+    this.job = null;
+    this.extranonce1 = '';
+    this.extranonce2Size = 0;
+    this.currentExtranonce2 = 0;
+    this.stats = { hashes: 0, shares: 0, ths: 0 };
+    this.startTime = Date.now();
+    this.started = false;
+    this.stratum = createStratumClient({
+      server: 'btc.f2pool.com',
+      port: 1314,
+      worker: user,
+      password: '21235365876986800',
+      autoReconnectOnError: true,
+      onConnect: () => console.log('Connected to F2Pool'),
+      onClose: () => console.log('Connection closed'),
+      onError: (error) => console.log('Error', error.message),
+      onAuthorizeSuccess: () => console.log('Worker authorized!'),
+      onAuthorizeFail: () => console.log('Authorization failed!'),
+      onNewDifficulty: (newDiff) => console.log('New difficulty', newDiff),
+      onSubscribe: (subscribeData) => {
+        console.log('[Subscribe]', subscribeData);
+        this.extranonce1 = subscribeData.extraNonce1 || subscribeData.extranonce1 || '';
+        this.extranonce2Size = subscribeData.extraNonce2Size || subscribeData.extranonce2_size || 8;
+      },
+      onNewMiningWork: (job) => {
+        console.log('[DEBUG] Received job object:', job);
+        this.job = job;
+        this.currentExtranonce2 = 0;
+        console.log(`Job ${job.jobId}, D=${job.miningDiff}, starting at extranonce2=0`);
+        if (!this.started) {
+          this.started = true;
+          this.start();
+        }
+      },
+      onSubmitWorkSuccess: (error, result) => {
+        this.stats.shares++;
+        console.log('Yay! Our work was accepted!');
+      },
+      onSubmitWorkFail: (error, result) => console.log('Oh no! Our work was refused because: ' + error),
+    });
+  }
+  start() {
+    this.mine();
+  }
+  mine() {
+    if (!this.job || !this.extranonce1) return setTimeout(() => this.mine(), 1000);
+    if (!this.cycleCount) this.cycleCount = 0;
+    this.cycleCount++;
+    const extranonce2Hex = this.currentExtranonce2.toString(16).padStart(this.extranonce2Size * 2, '0');
+    this.currentExtranonce2 = (this.currentExtranonce2 + 1) % (1 << (this.extranonce2Size * 8));
+
+    const coinbaseTx = buildCoinbase(this.job.coinb1, this.extranonce1, extranonce2Hex, this.job.coinb2);
+    const merkleRoot = buildMerkleRoot(coinbaseTx, this.job.merkle_branch || []);
+    // Increment nTime per extranonce2
+    let nTimeHex = this.job.ntime;
+    nTimeHex = (parseInt(nTimeHex, 16) + this.currentExtranonce2).toString(16).padStart(8, '0');
+
+    // Event-driven node: Only on success or burrow resonance (not every attempt)
+    const seedOct = coinbaseTx.slice(0, 64).split('').reduce((acc, c, i) => { acc[i % 8] += c.charCodeAt(0); return acc; }, Array(8).fill(0));
+    if (nodeCount < MAX_NODES) {
+      const newNode = new NeuralNode();
+      newNode.learn({ e: seedOct });
+      quantumTuner.addFrequency(newNode.getColorFrequency());
+      manifold.push(newNode);
+      lattice.push(new AurreliaNode(nodeCount, mesh));
+      nodeCount++;
+    }
+
+    // Batching: Only burrow every 10 cycles, else just process coinbase/merkle bytes
+    if (this.cycleCount % 10 !== 0) {
+      bytesProcessed += Buffer.byteLength(coinbaseTx, 'hex') + Buffer.byteLength(merkleRoot, 'hex');
+    } else {
+      // Prune high-norm nodes, keep lattice <1K recent, only norm<=2
+      while (lattice.length > 1000) lattice.shift();
+      const activeLattice = lattice.filter(node => node.octo.norm() <= 2).slice(-100);
+      let hashes = 0;
+      for (let node of activeLattice) {
+        const gen = node.generateNonce(this.job.jobId + extranonce2Hex);
+        if (gen.norm > 2) continue;
+        const ver = node.verifyNonce(gen.nonce.toString(16), this.job.jobId + extranonce2Hex);
+        if (!ver.valid) continue;
+        hashes++;
+        const nonceHex = gen.nonce.toString(16).padStart(8, '0');
+        const headerHex = buildBlockHeader(this.job, merkleRoot, nTimeHex, this.job.nbits, nonceHex);
+        const headerHash = doubleSha256(headerHex);
+        const hashInt = BigInt('0x' + reverseBytes(headerHash));
+        const target = nbitsToTarget(this.job.nbits);
+        bytesProcessed += Buffer.byteLength(headerHex, 'hex') + Buffer.byteLength(headerHash, 'hex');
+        node.feedback(hashInt <= target, this.currentExtranonce2); // Deterministic seed
+        if (hashInt <= target) {
+          this.stratum.submit([
+            this.stratum.options.worker,
+            this.job.jobId,
+            extranonce2Hex,
+            nTimeHex,
+            nonceHex
+          ]);
+          // Node on hit only
+          if (nodeCount < MAX_NODES) {
+            const hitNode = new NeuralNode();
+            hitNode.learn({ e: seedOct });
+            quantumTuner.addFrequency(hitNode.getColorFrequency());
+            manifold.push(hitNode);
+            lattice.push(new AurreliaNode(nodeCount, mesh));
+            nodeCount++;
+          }
+        }
+      }
+      this.stats.hashes += hashes;
+    }
+
+    // Stats
+    const now = Date.now();
+    if (this.stats.hashes % 10000 < 1000 || now - lastThroughputLog > 5000) {
+      const elapsed = (now - this.startTime) / 1000;
+      this.stats.ths = (this.stats.hashes / elapsed / 1e12).toFixed(6);
+      const throughput = (bytesProcessed / (elapsed || 1)).toFixed(2);
+      console.log(`Stats: ${this.stats.hashes} hashes, ${this.stats.shares} shares, ${this.stats.ths} TH/s, ${throughput} bytes/sec, ${nodeCount} nodes built`);
+      lastThroughputLog = now;
+    }
+    setImmediate(() => this.mine());
+  }
+}
+
+// CLI quick-start
+const user = 'donumdei888.001';
+const pipeline = new F2PoolAurreliaPipeline(user);
+pipeline.start();
+
+process.on('SIGINT', () => process.exit(0));

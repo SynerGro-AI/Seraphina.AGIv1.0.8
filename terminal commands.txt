@@ -1,0 +1,11 @@
+npm install --save-dev electron-builder
+
+npm ls eslint-plugin-react-hooks
+
+npm run build
+
+npm run dist
+
+npm run make
+
+node scripts/neural_lattice_test.mjs

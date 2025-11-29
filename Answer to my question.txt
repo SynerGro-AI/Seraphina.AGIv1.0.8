@@ -1,0 +1,4 @@
+Shell interaction: Implemented via radial attenuation in diffuse() (inner/outer shells influence each other with configurable coefficient). You can tune diffusion and radialAttenuation in LatticeOptions.
+Strings topology: Supports immutable (fixed) and learned strings. Learned strings adapt: strengthening on activation (reinforceStrings()), optional pruning by weight decay.
+GPU texture packing: packAtlas() flattens each 8×8×8 layer into a 64×64 luminance slice (stacked vertically). packAtlasImageData() returns an ImageData for direct Canvas/WebGL upload.
+Mesh compression: diffEncode() chooses among full frame, sparse diff (varint index/value), or RLE full-frame. diffDecode() reconstructs. Magic/version byte 0xC1 for future evolvability.

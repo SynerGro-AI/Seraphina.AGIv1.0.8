@@ -1,0 +1,112 @@
+import React, { useCallback, useState } from 'react';
+
+interface GeneratedKey {
+  key: string;
+  hash?: string;
+  algo?: string;
+  bytes: number;
+  length: number;
+  created: number;
+}
+
+const hashAlgorithms = ['NONE','SHA-256','SHA-512'] as const;
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const b64 = btoa(binary);
+  return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+
+async function hashText(algo: 'SHA-256' | 'SHA-512', text: string): Promise<string> {
+  const enc = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest(algo, enc);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+export const ApiKeyGeneratorPanel: React.FC = () => {
+  const [length, setLength] = useState(32);
+  const [prefix, setPrefix] = useState('sk-');
+  const [hashAlgo, setHashAlgo] = useState<typeof hashAlgorithms[number]>('SHA-256');
+  const [lower, setLower] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [generated, setGenerated] = useState<GeneratedKey | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const generate = useCallback(async () => {
+    setError(null); setCopied(false);
+    if (length < 16){ setError('Minimum length is 16 bytes.'); return; }
+    setBusy(true);
+    try {
+      const raw = new Uint8Array(length);
+      crypto.getRandomValues(raw);
+      let keyBody = bytesToBase64Url(raw);
+      if (lower) keyBody = keyBody.toLowerCase();
+      const fullKey = prefix + keyBody;
+      let hash: string | undefined; let algo: string | undefined;
+      if (hashAlgo !== 'NONE') { hash = await hashText(hashAlgo as 'SHA-256' | 'SHA-512', fullKey); algo = hashAlgo; }
+      setGenerated({ key: fullKey, hash, algo, bytes: length, length: fullKey.length, created: Date.now() });
+    } catch(e:any){ setError(e.message || String(e)); }
+    finally { setBusy(false); }
+  }, [length, prefix, hashAlgo, lower]);
+
+  const copyKey = useCallback(async () => {
+    if (!generated) return; setCopied(false);
+    try { await navigator.clipboard.writeText(generated.key); setCopied(true); setTimeout(()=>setCopied(false), 1800); } catch(e){ setError('Clipboard failed'); }
+  }, [generated]);
+
+  const copyHash = useCallback(async () => {
+    if (!generated?.hash) return; setCopied(false);
+    try { await navigator.clipboard.writeText(generated.hash); setCopied(true); setTimeout(()=>setCopied(false), 1800); } catch(e){ setError('Clipboard failed'); }
+  }, [generated]);
+
+  return (
+    <div style={{ position:'relative', width:'100%', height:'100%', display:'flex', flexDirection:'column', background:'linear-gradient(145deg,#031b24 0%,#02040a 70%)', border:'1px solid #044', borderRadius:8, padding:'0.75rem', fontFamily:'system-ui,Segoe UI,Roboto,Ubuntu,sans-serif' }}>
+      <div style={{ position:'absolute', top:4, left:8, fontSize:12, color:'#0ff', fontFamily:'monospace', letterSpacing:1 }}>API KEY GENERATOR</div>
+      <div style={{ marginTop:18, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:12 }}>
+        <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, color:'#8bd' }}>Bytes
+          <input type="number" value={length} min={16} max={128} onChange={e=>setLength(parseInt(e.target.value||'0',10))} style={inputStyle} />
+        </label>
+        <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, color:'#8bd' }}>Prefix
+          <input type="text" value={prefix} placeholder="sk-" onChange={e=>setPrefix(e.target.value)} style={inputStyle} />
+        </label>
+        <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, color:'#8bd' }}>Hash
+          <select value={hashAlgo} onChange={e=>setHashAlgo(e.target.value as any)} style={inputStyle}>
+            {hashAlgorithms.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#8bd', marginTop:24 }}>
+          <input type="checkbox" checked={lower} onChange={e=>setLower(e.target.checked)} /> lower
+        </label>
+        <div style={{ display:'flex', alignItems:'flex-end' }}>
+          <button disabled={busy} onClick={generate} style={buttonStyle}>{busy? 'Generating...' : 'Generate'}</button>
+        </div>
+      </div>
+      {error && <div style={{ marginTop:8, color:'#f66', fontSize:12 }}>{error}</div>}
+      {generated && (
+        <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:8 }}>
+          <div style={resultRow}>Key: <code style={codeStyle}>{generated.key}</code></div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button onClick={copyKey} style={smallButton}>{copied? 'Copied' : 'Copy Key'}</button>
+            {generated.hash && <button onClick={copyHash} style={smallButton}>{copied? 'Copied' : 'Copy Hash'}</button>}
+            <button onClick={()=>setGenerated(null)} style={smallButtonAlt}>Clear</button>
+          </div>
+          <div style={{ fontSize:11, color:'#5fa' }}>Chars: {generated.length} • Bytes entropy: {generated.bytes*8} bits {generated.algo? `• ${generated.algo} digest ready` : ''}</div>
+          {generated.hash && <div style={{ fontSize:11, color:'#8bd' }}>Hash: <span style={{ wordBreak:'break-all', fontFamily:'monospace' }}>{generated.hash}</span></div>}
+          <div style={{ fontSize:10, lineHeight:1.35, color:'#789' }}>Store only the hash server-side. Raw key cannot be recovered once discarded. Rotate monthly for giveaway usage. All generation is purely client-side using Web Crypto.</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Inline style objects (avoid external CSS churn)
+const inputStyle: React.CSSProperties = { background:'#041c26', color:'#d6f6ff', border:'1px solid #094451', borderRadius:4, padding:'6px 8px', fontSize:12 };
+const buttonStyle: React.CSSProperties = { background:'linear-gradient(90deg,#0284c7,#0ea5e9)', border:'none', color:'#fff', fontSize:12, padding:'8px 14px', borderRadius:4, cursor:'pointer', fontWeight:600, letterSpacing:0.5 };
+const smallButton: React.CSSProperties = { ...buttonStyle, padding:'6px 10px', fontSize:11, background:'linear-gradient(90deg,#0d9488,#14b8a6)' };
+const smallButtonAlt: React.CSSProperties = { ...buttonStyle, padding:'6px 10px', fontSize:11, background:'#1e293b' };
+const codeStyle: React.CSSProperties = { fontFamily:'monospace', fontSize:12, color:'#0ff', background:'#061f29', padding:'4px 6px', borderRadius:4, wordBreak:'break-all', flex:1 };
+const resultRow: React.CSSProperties = { display:'flex', gap:6, alignItems:'flex-start', fontSize:12, color:'#8bd', flexWrap:'wrap' };
+
+export default ApiKeyGeneratorPanel;

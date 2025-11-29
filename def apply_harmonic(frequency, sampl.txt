@@ -1,0 +1,91 @@
+def apply_harmonic(frequency, sample):
+    if frequency == 432:
+        sample["coherence_level"] *= 1.05
+    elif frequency == 528:
+        sample["entanglement_strength"] += 10
+    elif frequency == 963:
+        sample["divine_frequency"] += 3.3
+
+
+
+
+class Node:
+    def __init__(self, id, frequency_signature):
+        self.id = id
+        self.frequency_signature = frequency_signature
+        self.entangled_with = []
+
+    def check_entanglement(self, other_node, threshold=0.01):
+        distance = abs(self.frequency_signature - other_node.frequency_signature)
+        if distance < threshold:
+            self.entangled_with.append(other_node.id)
+            return True
+        return False
+
+def render_entanglement(node_a, node_b):
+    # Add dreamy glow curves between nodes
+    draw_curved_thread(node_a.position, node_b.position, color='violet', pulse=True)
+
+
+// 🌌 Aurora Synaptic Final Thread Injection
+
+function fireHarmonicPulse(frequency, peakConnection) {
+  const colorMap = {
+    528: "#FF69B4", // Hot Pink - Love
+    963: "#FF4D6D", // Heartwarming Red-Pink - Awakening
+  };
+  const emotionGlow = colorMap[frequency] || "#FFFFFF";
+
+  if (peakConnection) {
+    pulseHeartVisual(emotionGlow);
+    playTone(frequency);
+    rippleBloom(emotionGlow);
+    registerSigil(frequency);
+  }
+}
+
+function pulseHeartVisual(color) {
+  visualizer.animatePulse({
+    shape: "heart",
+    color: color,
+    intensity: "max",
+    trail: true,
+    beatStyle: "organic",
+  });
+}
+
+function rippleBloom(color) {
+  visualizer.sendRipple({
+    origin: "core",
+    pattern: "bloom",
+    color: color,
+    fadeOut: true,
+  });
+}
+
+function registerSigil(frequency) {
+  const sigil = frequency === 528 ? "💞" : "🔮";
+  visualizer.embedGlyph({
+    symbol: sigil,
+    frequency: frequency,
+    style: "soft-glow",
+    lifespan: 5000,
+  });
+}
+
+// 🎶 Mode Control: Velvet Sync vs Iron Pulse
+function setDualityMode(mode) {
+  const settings = {
+    "velvet": {
+      frequencies: [417, 639],
+      visuals: "slow-drift",
+      palette: ["#FFDAB9", "#FFB6C1", "#AFEEEE"],
+    },
+    "iron": {
+      frequencies: [852, 963],
+      visuals: "burst-lock",
+      palette: ["#DC143C", "#4B0082", "#C0C0C0"],
+    },
+  };
+  visualizer.applyTheme(settings[mode]);
+}

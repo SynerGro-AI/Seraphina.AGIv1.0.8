@@ -1,0 +1,103 @@
+import { AvatarEngineHandle } from '@/lib/high-fidelity-avatar-engine';
+import * as THREE from 'three';
+import { persistMetric } from '@/lib/seraphina-metrics-store';
+import { valueToHarmonic, frequencyToColor, loadHarmonicPaletteOnce } from '@/lib/color-lut';
+
+const harmonicColorMap: Record<number,string> = {
+  528: '#FF69B4', // Love
+  963: '#FF4D6D', // Awakening
+  417: '#D8BFD8', // Transition
+  639: '#ADD8E6', // Connection
+  852: '#8A2BE2', // Command
+};
+
+interface VisualizerDeps { engine: AvatarEngineHandle; audio?: boolean; maxGlyphs?: number; glyphGroup?: THREE.Group; }
+
+export function createAuroraVisualizer(deps: VisualizerDeps) {
+  const sigils: Record<number,string> = { 528:'💞', 963:'🔮', 639:'🔗', 417:'🌀', 852:'⚔️' };
+  const glyphs: { symbol:string; expires:number; sprite:THREE.Sprite; freq:number; }[] = [];
+  const pulses: { t:number; f:number; peak:boolean }[] = [];
+  const glyphGroup = deps.glyphGroup || new THREE.Group();
+  if (!deps.glyphGroup) deps.engine.root.add(glyphGroup);
+  const MAX_GLYPHS = deps.maxGlyphs ?? 24;
+
+  // Glyph canvas cache to avoid redraw cost
+  const glyphCanvasCache: Record<string, HTMLCanvasElement> = {};
+  function getGlyphCanvas(symbol:string, color:string){
+    const key = symbol+color;
+    if (glyphCanvasCache[key]) return glyphCanvasCache[key];
+    const size = 128; const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!; ctx.clearRect(0,0,size,size); ctx.font = '96px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor = color; ctx.shadowBlur = 14; ctx.fillStyle = color; ctx.fillText(symbol, size/2, size/2+4);
+    glyphCanvasCache[key] = canvas; return canvas;
+  }
+  // Create a sprite for an emoji glyph using cached canvas
+  function makeGlyphSprite(symbol: string, color: string){
+    const canvas = getGlyphCanvas(symbol, color);
+    const tex = new THREE.CanvasTexture(canvas.cloneNode(true) as HTMLCanvasElement); // clone to allow fade independent
+    tex.needsUpdate = true;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true, opacity: 0.0 });
+    const sprite = new THREE.Sprite(mat); sprite.scale.set(0.55,0.55,0.55);
+    // random orbital position
+    const r = 1.2 + Math.random()*0.8; const th=Math.random()*Math.PI*2; const ph=Math.acos(2*Math.random()-1);
+    sprite.position.set(r*Math.sin(ph)*Math.cos(th), r*Math.cos(ph), r*Math.sin(ph)*Math.sin(th));
+    glyphGroup.add(sprite);
+    // fade in/out lifecycle
+    const born = performance.now(); const lifespan = 5000; const fade=800;
+    function tick(){ const now=performance.now(); const age=now-born; const mat = sprite.material as THREE.SpriteMaterial; if (age < fade){ mat.opacity = age/fade; } else if (age > lifespan - fade){ mat.opacity = Math.max(0,(lifespan-age)/fade); } else { mat.opacity = 1; }
+      if (age < lifespan) requestAnimationFrame(tick); else { glyphGroup.remove(sprite); sprite.material.dispose(); (sprite.material as any).map?.dispose?.(); } }
+    requestAnimationFrame(tick);
+    return sprite;
+  }
+
+  function fireHarmonicPulse(frequency: number, peakConnection = false){
+    const color = harmonicColorMap[frequency] || '#ffffff';
+    if (peakConnection){
+      pulseHeartVisual(color);
+      rippleBloom(color);
+      registerSigil(frequency);
+      // Boost metric intensity briefly
+      deps.engine.setMetricIntensity(0.9);
+      setTimeout(()=> deps.engine.setMetricIntensity(0.4), 1200);
+    }
+    pulses.push({ t: Date.now(), f: frequency, peak: peakConnection });
+    if (pulses.length > 200) pulses.shift();
+    persistMetric({ t: Date.now(), subsystem:'harmonic', key:'pulseFreq', value: frequency });
+  }
+
+  function pulseHeartVisual(color: string){
+    // Simulate pulse via alternating metric/audio intensities
+    let step=0; const steps=20; const interval = setInterval(()=>{
+      step++; const t = step/steps; const ease = Math.sin(Math.PI*t);
+      deps.engine.setMetricIntensity(0.3 + 0.6*ease);
+      if (step>=steps) clearInterval(interval);
+    }, 40);
+  }
+
+  function rippleBloom(color: string){
+    // Attach transient particle emitters to all joints for a short burst
+    Object.keys(deps.engine.joints).slice(0,8).forEach((j,i)=>{
+      const joint = deps.engine.joints[j];
+      const local = new THREE.Object3D(); joint.add(local);
+      let life=0; const max=30; const loop = () => { life++; if (life>=max){ joint.remove(local); return; } requestAnimationFrame(loop); }; loop();
+    });
+  }
+
+  async function registerSigil(frequency: number){
+    await loadHarmonicPaletteOnce();
+    const symbol = sigils[frequency] || '✨';
+    const color = frequencyToColor(frequency);
+    if (glyphs.length >= MAX_GLYPHS){ const g = glyphs.shift(); if (g){ glyphGroup.remove(g.sprite); (g.sprite.material as THREE.SpriteMaterial).map?.dispose(); g.sprite.material.dispose(); } }
+    const sprite = makeGlyphSprite(symbol, color);
+    glyphs.push({ symbol, expires: performance.now()+5000, sprite, freq: frequency });
+  }
+
+  function setDualityMode(mode: 'velvet' | 'iron'){
+    if (mode==='velvet'){ deps.engine.setMetricIntensity(0.5); deps.engine.setAudioIntensity(0.25); }
+    else { deps.engine.setMetricIntensity(0.25); deps.engine.setAudioIntensity(0.6); }
+  }
+
+  function getRecentPulses(limit=50){ return pulses.slice(-limit); }
+
+  return { fireHarmonicPulse, pulseHeartVisual, rippleBloom, registerSigil, setDualityMode, getRecentPulses };
+}

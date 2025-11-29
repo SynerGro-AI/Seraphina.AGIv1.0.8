@@ -1,0 +1,44 @@
+function step(tick:number){
+  // Phase 1: process inbound
+  for (let idx=0; idx<NODE_COUNT; idx++){
+    const signals = inboundBuckets[idx];
+    if (!signals.length) continue;
+    let sum = 0;
+    for (const s of signals){
+      const fromL = (s.from >> 9) & 0x7;
+      const toL = (idx / 512) | 0;
+      sum += s.strength * coupling[fromL*8 + toL];
+    }
+    potentials[idx] += sum;
+    inboundBuckets[idx].length = 0;
+  }
+  // Phase 2: decay & fire
+  for (let idx=0; idx<NODE_COUNT; idx++){
+    potentials[idx] *= 0.97; // decay
+    if (potentials[idx] > 1.0){
+      lastFire[idx] = tick;
+      const lattice = (idx / 512) | 0;
+      emitSignalsForNode(lattice, idx, potentials[idx]);
+      potentials[idx] = 0.2; // reset partial
+    }
+  }
+  // Phase 3: route (outboundTemp -> inbound of next tick)
+  for (const sig of outboundTemp){
+    const targetIndex = nodeIndex( (sig.to>>9)&0x7, sig.to &0x7, (sig.to>>3)&0x7, (sig.to>>6)&0x7 );
+    inboundBuckets[targetIndex].push(sig);
+  }
+  outboundTemp.length = 0;
+}
+function emitSignalsForNode(lattice:number, idx:number, energy:number){
+  const localNeighbors = getLocalNeighbors(idx); // returns addresses
+  for (const to of localNeighbors){
+    outboundTemp.push({ from: addrOf(idx,lattice), to, strength: energy*0.15, channel:0, t: performance.now() });
+  }
+  // Cross lattice
+  for (let l2=0;l2<8;l2++){
+    if (l2===lattice) continue;
+    if (coupling[lattice*8 + l2] < 0.001) continue;
+    const mapped = mapGateway(idx, lattice, l2); // address in lattice l2
+    outboundTemp.push({ from: addrOf(idx,lattice), to: mapped, strength: energy*0.05, channel:1, t: performance.now() });
+  }
+}

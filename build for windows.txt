@@ -1,0 +1,14 @@
+module.exports = {
+  makers: [
+    {
+      name: '@electron-forge/maker-squirrel',
+      config: {
+        // Windows-specific options here
+      }
+    },
+    {
+      name: '@electron-forge/maker-deb', // For Linux, if needed
+      config: {}
+    }
+  ]
+};

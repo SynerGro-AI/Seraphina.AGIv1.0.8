@@ -1,0 +1,110 @@
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { badgeClasses } from '@/components/ui/badge-span';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ArduinoAutoDetector, ArduinoBoard } from '@/lib/arduino-auto-detector';
+import { ArduinoStatusDisplay } from '@/components/ArduinoStatusDisplay';
+
+
+export const AutonomousArduinoManager: React.FC = () => {
+  const [boards, setBoards] = useState<ArduinoBoard[]>([]);
+  const [detector, setDetector] = useState<ArduinoAutoDetector | null>(null);
+  const [isSupported, setIsSupported] = useState(false);
+  const [totalProgrammed, setTotalProgrammed] = useState(0);
+
+  useEffect(() => {
+    // Check Web Serial API support
+    if ('serial' in navigator) {
+      setIsSupported(true);
+      initializeDetector();
+    } else {
+      setIsSupported(false);
+    }
+  }, []);
+
+  const initializeDetector = async () => {
+    const arduinoDetector = new ArduinoAutoDetector();
+    
+    // Set up event handlers
+    arduinoDetector.setOnBoardConnected((board) => {
+      setBoards(prev => [...prev, board]);
+      setTotalProgrammed(prev => prev + 1);
+      console.log(`🎯 NEW ARDUINO DETECTED & AUTO-PROGRAMMING: ${board.name}`);
+    });
+
+    arduinoDetector.setOnBoardDisconnected((boardId) => {
+      setBoards(prev => prev.filter(b => b.id !== boardId));
+      console.log(`🔌 Arduino disconnected: ${boardId}`);
+    });
+
+    // Scan for existing boards
+    const existingBoards = await arduinoDetector.scanForExistingBoards();
+    setBoards(existingBoards);
+    setTotalProgrammed(existingBoards.length);
+    
+    setDetector(arduinoDetector);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'idle': return 'bg-blue-500';
+      case 'programming': return 'bg-yellow-500 animate-pulse';
+      case 'complete': return 'bg-green-500';
+      case 'error': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'idle': return 'READY';
+      case 'programming': return 'AUTO-PROGRAMMING...';
+      case 'complete': return 'OCTABIT OS DEPLOYED';
+      case 'error': return 'ERROR';
+      default: return 'UNKNOWN';
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <Card className="border-green-500 border-2">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>🤖 AUTONOMOUS Arduino Manager</span>
+            <div className="flex gap-2">
+              <span className={badgeClasses('outline','bg-green-100')}>
+                🔄 AUTO-DETECT: ON
+              </span>
+              <span className={badgeClasses('outline','bg-blue-100')}>
+                📊 Total Programmed: {totalProgrammed}
+              </span>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!isSupported && (
+            <Alert className="border-orange-500 bg-orange-50 mb-4">
+              <AlertDescription>
+                ⚠️ Web Serial API not supported in this browser. Showing demonstration mode.
+                For real Arduino detection, use Chrome/Edge browser.
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <Alert className="mb-4 border-green-500 bg-green-50">
+            <AlertDescription>
+              🚀 <strong>AUTONOMOUS MODE ACTIVE</strong><br/>
+              • Plug in ANY Arduino R4 board via USB<br/>
+              • System will AUTO-DETECT and AUTO-PROGRAM<br/>
+              • NO buttons needed - fully autonomous<br/>
+              • Works on Windows & Linux OS
+            </AlertDescription>
+          </Alert>
+
+          {/* Show demonstration */}
+          <ArduinoStatusDisplay />
+        </CardContent>
+      </Card>
+    </div>
+  );
+};

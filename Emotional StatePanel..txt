@@ -1,0 +1,114 @@
+import React, { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/card';
+
+interface Sample { t:number; totalDelta?:number; deltaFires?:number[]; avgPotential:number; maxPotential:number; }
+interface StateEntry { state:EmotionState; ts:number; intensity:number; }
+
+type EmotionState = 'Empathy Low' | 'Calm Serenity' | 'Focused Flow' | 'Adrenaline Surge' | 'Full Saturation';
+
+const WINDOW = 120; // seconds for baseline
+const HYSTERESIS = 0.82;
+
+function dynamicThresholds(stats:{ mean:number; p75:number; p90:number; p95:number; max:number; }):number[] {
+  // Derive tier thresholds from observed distribution of normalized intensities.
+  // Empathy Low -> baseline near zero
+  const calm = stats.mean * 0.6 + stats.p75*0.4; // typical calm
+  const flow = stats.p75 * 0.9; // entering focused flow
+  const surge = stats.p90 * 0.95; // high mobilization
+  const full = Math.max(stats.p95, stats.max*0.85); // near-saturation
+  return [0, calm, flow, surge, full];
+}
+
+function classify(norm:number, distribution:number[], prev:EmotionState|null):EmotionState {
+  const order:EmotionState[] = ['Empathy Low','Calm Serenity','Focused Flow','Adrenaline Surge','Full Saturation'];
+  let idx = 0; for (let i=distribution.length-1;i>=0;i--){ if (norm>=distribution[i]) { idx=i; break; } }
+  if (prev){
+    const prevIdx = order.indexOf(prev);
+    if (idx < prevIdx){
+      if (norm > distribution[prevIdx]*HYSTERESIS) return prev;
+    }
+  }
+  return order[idx];
+}
+
+const EmotionalStatePanel:React.FC = () => {
+  const [history,setHistory] = useState<number[]>([]);
+  const [state,setState] = useState<EmotionState>('Calm Serenity');
+  const [transitions,setTransitions] = useState<StateEntry[]>([]);
+  const [intensity,setIntensity] = useState(0);
+  const [thresholds,setThresholds] = useState<number[]>([0,0.002,0.006,0.02,0.08]);
+  const [showRaw,setShowRaw] = useState(false);
+  const [bias,setBias] = useState(1); // >1 turbo (more sensitive), <1 dampen
+
+  useEffect(()=>{
+    let mounted = true;
+    function tick(){
+      const api = (window as any).SeraphinaNeuralLattice as { getLatestNeuralLatticeMetrics?: ()=>Sample; getNeuralLatticeStaticInfo?: ()=>{ totalNodes:number } }|undefined;
+      const s = api?.getLatestNeuralLatticeMetrics?.();
+      const info = api?.getNeuralLatticeStaticInfo?.();
+      if (s && info && typeof s.totalDelta==='number'){
+        const norm = s.totalDelta / info.totalNodes;
+        setHistory(prev=>{ const next=[...prev, s.totalDelta]; if (next.length>WINDOW) next.shift(); return next; });
+        setIntensity(norm);
+        const normalizedHistory = [...history, s.totalDelta].map(v=> v / info.totalNodes).slice(-WINDOW);
+        if (normalizedHistory.length>10){
+          const sorted = [...normalizedHistory].sort((a,b)=>a-b);
+          const pct = (p:number)=> sorted[Math.min(sorted.length-1, Math.floor(p*sorted.length))];
+          const stats = { mean: normalizedHistory.reduce((a,b)=>a+b,0)/normalizedHistory.length, p75:pct(0.75), p90:pct(0.90), p95:pct(0.95), max: sorted[sorted.length-1] };
+          let dyn = dynamicThresholds(stats);
+          if (bias !== 1){
+            dyn = dyn.map((v,i)=> i===0?0: v / bias); // decrease threshold when bias>1 (turbo), increase when <1
+          }
+          setThresholds(dyn);
+          setState(prev=>{
+            const newState = classify(norm, dyn, prev);
+            if (newState !== prev){
+              const entry = { state:newState, ts: s.t, intensity: norm } as StateEntry;
+              setTransitions(tp=>[entry, ...tp.slice(0,19)]);
+              // persist transition
+              try {
+                const port = (window as any).SERAPHINA_INTERNAL_PORT || 18639;
+                const secret = (window as any).SERAPHINA_INTERNAL_SECRET;
+                fetch(`http://127.0.0.1:${port}/api/neural/emotions`, { method:'POST', headers:{ 'Content-Type':'application/json', ...(secret? { Authorization:'Bearer '+secret }: {}) }, body: JSON.stringify({ transitions:[entry] }) }).catch(()=>{});
+              } catch {}
+            }
+            return newState;
+          });
+        }
+      }
+      if (mounted) setTimeout(tick,1000);
+    }
+    tick();
+    return ()=>{ mounted=false; };
+  },[history]);
+
+  const barPct = Math.min(100, intensity*400);
+
+  return (
+    <Card className="p-3 bg-gradient-to-br from-pink-900/30 to-pink-600/10 border border-pink-500/20 text-xs space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="font-medium text-pink-300 text-[11px] tracking-wide">Emotional State Engine</div>
+        <div className="text-[10px] text-pink-200/70">{(intensity*100).toFixed(2)}% activity</div>
+      </div>
+      <div className="h-3 w-full bg-pink-500/10 rounded overflow-hidden">
+        <div className="h-full bg-pink-400/70 transition-all" style={{ width: barPct+'%' }} />
+      </div>
+      <div className="text-[11px] font-semibold text-pink-200">{state}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] text-muted-foreground leading-snug">Adaptive thresholds: {thresholds.slice(1).map(v=> (v*100).toFixed(2)+'%').join(' | ')} (calm→full)</div>
+        <button onClick={()=>setShowRaw(s=>!s)} className="text-[10px] px-2 py-0.5 border border-pink-400/30 rounded hover:bg-pink-400/10">{showRaw?'Hide':'Raw'}</button>
+      </div>
+      {showRaw && <div className="text-[10px] font-mono bg-pink-500/5 p-1 rounded border border-pink-500/10 overflow-auto">{JSON.stringify(thresholds)}</div>}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-[10px]"><span>Sensitivity</span><span>{bias.toFixed(2)}x</span></div>
+        <input type="range" min="0.5" max="2" step="0.05" value={bias} onChange={e=>setBias(Number(e.target.value))} className="w-full" />
+      </div>
+      <div className="mt-2 space-y-1 max-h-28 overflow-auto pr-1">
+        {transitions.length===0 && <div className="text-[10px] text-muted-foreground">No transitions yet.</div>}
+        {transitions.map(t=> <div key={t.ts} className="flex justify-between"><span className="tabular-nums">{new Date(t.ts).toLocaleTimeString()}</span><span>{t.state}</span><span className="tabular-nums">{(t.intensity*100).toFixed(2)}%</span></div>)}
+      </div>
+    </Card>
+  );
+};
+
+export default EmotionalStatePanel;

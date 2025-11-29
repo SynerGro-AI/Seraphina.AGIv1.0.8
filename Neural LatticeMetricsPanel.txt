@@ -1,0 +1,97 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Button } from './ui/button';
+import { Card } from './ui/card';
+
+interface MetricSample { t:number; firesPerLattice:number[]; totalFires:number; avgPotential:number; maxPotential:number; couplingScalar:number; }
+
+const MAX_HISTORY = 120; // last 2 minutes at 1 Hz
+
+function formatTime(ts:number){ const d = new Date(ts); return d.toLocaleTimeString(); }
+
+const colors = ['#ff4d4f','#ff7a45','#ffa940','#ffec3d','#73d13d','#36cfc9','#40a9ff','#9254de'];
+
+const Sparkline: React.FC<{ series:number[][]; height?:60|80; }> = ({ series, height=60 }) => {
+  const canvasRef = useRef<HTMLCanvasElement|null>(null);
+  useEffect(()=>{
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const w = canvas.width = canvas.clientWidth * devicePixelRatio;
+    const h = canvas.height = height * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.clearRect(0,0,w,h);
+    const maxVal = Math.max(1, ...series.map(s=>Math.max(...s))); // avoid div by zero
+    series.forEach((s,idx)=>{
+      ctx.beginPath(); ctx.strokeStyle = colors[idx%colors.length]; ctx.lineWidth=1.5;
+      s.forEach((v,i)=>{
+        const x = (i/(s.length-1)) * (canvas.clientWidth-4) + 2;
+        const y = (1 - (v/maxVal)) * (height-4) + 2;
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    });
+  },[series,height]);
+  return <canvas ref={canvasRef} style={{ width:'100%', height }} />;
+};
+
+const NeuralLatticeMetricsPanel: React.FC = () => {
+  const [samples,setSamples] = useState<MetricSample[]>([]);
+  const [lastExport,setLastExport] = useState<number|undefined>();
+
+  useEffect(()=>{
+    let mounted = true;
+  function poll(){
+        const api = (window as unknown as { SeraphinaNeuralLattice?: { getLatestNeuralLatticeMetrics?: ()=>MetricSample|undefined } }).SeraphinaNeuralLattice;
+        if (api?.getLatestNeuralLatticeMetrics){
+          const latest = api.getLatestNeuralLatticeMetrics();
+          if (latest){
+            setSamples(prev=>{
+              if (prev.length && prev[prev.length-1].t === latest.t) return prev; // no change
+              const next = [...prev, latest];
+              if (next.length > MAX_HISTORY) next.splice(0, next.length - MAX_HISTORY);
+              return next;
+            });
+          }
+        }
+        if (mounted) setTimeout(poll, 1000);
+      }
+    poll();
+    return ()=>{ mounted=false; };
+  },[]);
+
+  const firesSeries = Array.from({length:8}, (_,i)=> samples.map(s=> s.firesPerLattice[i]));
+  const couplingSeries = samples.map(s=> s.couplingScalar);
+  const latest = samples[samples.length-1];
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm">Neural Lattice Activity</h3>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={()=>{
+              const api = (window as unknown as { SeraphinaNeuralLattice?: { exportNeuralLatticeMetrics?: ()=>void } }).SeraphinaNeuralLattice;
+              api?.exportNeuralLatticeMetrics?.();
+              setLastExport(Date.now());
+            }}>Export JSON</Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-xs font-medium mb-1">Fires per Lattice (cumulative)</div>
+          <Sparkline series={firesSeries} height={80} />
+          <div className="mt-2 grid grid-cols-4 gap-1 text-[10px]">
+            {firesSeries.map((s,i)=> <div key={i} className="flex items-center gap-1"><span style={{background:colors[i],display:'inline-block',width:8,height:8}} />L{i}:{s[s.length-1]||0}</div>)}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-medium mb-1">Coupling Scalar</div>
+          <Sparkline series={[couplingSeries]} height={80} />
+          <div className="text-[10px] mt-2">Latest: {latest? latest.couplingScalar.toFixed(3):'—'}</div>
+          <div className="text-[10px]">Avg Potential: {latest? latest.avgPotential.toFixed(4):'—'} Max Potential: {latest? latest.maxPotential.toFixed(4):'—'}</div>
+        </div>
+      </div>
+      <div className="text-[10px] text-muted-foreground">Samples: {samples.length} {lastExport && <span className="ml-2">Exported {formatTime(lastExport)}</span>}</div>
+    </Card>
+  );
+};
+
+export default NeuralLatticeMetricsPanel;

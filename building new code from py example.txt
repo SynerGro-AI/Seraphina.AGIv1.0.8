@@ -1,0 +1,163 @@
+
+Function	Description
+abs()	Return the absolute value of a number.
+aiter()	Return an asynchronous iterator for an asynchronous iterable.
+all()	Return True if all elements of the iterable are true.
+any()	Return True if any element of the iterable is true.
+ascii()	Return a string with a printable representation of an object.
+bin()	Convert an integer number to a binary string.
+bool()	Return a Boolean value.
+breakpoint()	Drops you into the debugger at the call site.
+bytearray()	Return a new array of bytes.
+bytes()	Return a new “bytes” object.
+callable()	Return True if the object argument is callable, False if not.
+chr()	Return the string representing a character.
+classmethod()	Transform a method into a class method.
+compile()	Compile the source into a code or AST object.
+complex()	Return a complex number with the value real + imag*1j.
+delattr()	Deletes the named attribute, provided the object allows it.
+dict()	Create a new dictionary.
+dir()	Return the list of names in the current local scope.
+divmod()	Return a pair of numbers consisting of their quotient and remainder.
+enumerate()	Return an enumerate object.
+eval()	Evaluates and executes an expression.
+exec()	This function supports dynamic execution of Python code.
+filter()	Construct an iterator from an iterable and returns true.
+float()	Return a floating point number from a number or string.
+format()	Convert a value to a “formatted” representation.
+frozenset()	Return a new frozenset object.
+getattr()	Return the value of the named attribute of object.
+globals()	Return the dictionary implementing the current module namespace.
+hasattr()	Return True if the object has the named attribute.
+hash()	Return the hash value of the object.
+help()	Invoke the built-in help system.
+hex()	Convert an integer number to a lowercase hexadecimal string.
+id()	Return the “identity” of an object. *keep*
+input()	This function takes an input and converts it into a string. *auto*
+int()	Return an integer object constructed from a number or string.
+isinstance()	Return True if the object argument is an instance of an object.
+issubclass()	Return True if class is a subclass of classinfo.
+iter()	Return an iterator object.
+len()	Return the length (the number of items) of an object.*bits*
+list()	Rather than being a function, list is a mutable sequence type.
+locals()	Update and return a dictionary with the current local symbol table.
+map()	Return an iterator that applies function to every item of iterable.
+max()	Return the largest item in an iterable.
+min()	Return the smallest item in an iterable.
+next()	Retrieve the next item from the iterator.
+object()	Return a new featureless object.
+oct()	Convert an integer number to an octal string. *what is this and is this the same as my lattice?*
+open()	Open file and return a corresponding file object.
+ord()	Return an integer representing the Unicode code point of a character.
+pow()	Return base to the power exp.
+print()	Print objects to the text stream file.*screen emoji*
+property()	Return a property attribute.
+repr()	Return a string containing a printable representation of an object.
+reversed()	Return a reverse iterator.
+round()	Return number rounded to ndigits precision after the decimal point.
+set()	Return a new set object.
+setattr()	This is the counterpart of getattr().
+slice()	Return a sliced object representing a set of indices.
+sorted()	Return a new sorted list from the items in iterable.
+staticmethod()	Transform a method into a static method.
+str()	Return a str version of object.
+sum()	Sums start and the items of an iterable.
+super()	Return a proxy object that delegates method calls to a parent or sibling.
+tuple()	Rather than being a function, is actually an immutable sequence type.
+type()	Return the type of an object.
+vars()	Return the dict attribute for any other object with a dict attribute.
+zip()	Iterate over several iterables in parallel. *think*
+import()	This function is invoked by the import statement
+
+
+Math Operators
+From highest to lowest precedence:
+
+Operators	Operation	Example
+**	Exponent	2 ** 3 = 8
+%	Modulus/Remainder	22 % 8 = 6
+//	Integer division	22 // 8 = 2
+/	Division	22 / 8 = 2.75
+*	Multiplication	3 * 3 = 9
+-	Subtraction	5 - 2 = 3
++	Addition	2 + 2 = 4
+*this needs to extended to all math including algebra, scientific equations, string theory, quantum calculations, calculous, geometry all dimensions, mathematical geometric equations. represented by Math operations emoji all at once, AI builds best equation. * 
+
+Comparison Operators
+Operator	Meaning
+==	Equal to
+!=	Not equal to
+<	Less than
+>	Greater Than
+<=	Less than or Equal to
+>=	Greater than or Equal to
+These operators evaluate to True or False depending on the values you give them *this true or false should be simply information read, compared and valued as true or false without needing a hard wire, comparison operator will be (~)anything that probe brings back for that function, command, or otherwise. * 
+
+Cheatsheet
+Basics
+Built-in functions
+Control flow *(<>)probed program, hardware, auto learning sequence will always start with lower values to learn slowly, efficiently and optimally allowing for structured memory learning logic. The control flow is there for not hardwired but rather an AI adapted technique* 
+Functions 
+List and Tuples
+Dictionaries      *find*
+Sets
+Comprehensions
+Manipulating strings     *no need for strings as AI logic is built in*
+String formatting
+Regular expressions
+Files and directory paths   *no need data saved directly in Seraphina's Neural nodes*
+Reading and writing files
+Json and Yaml
+Exception handling        *only one script, no need*
+Debugging               *auto sensory no need, revert to binary if needed*
+Args and Kwargs
+Decorators
+Context manager
+OOP
+Dataclasses
+setup.py * there is .888 anything, anywhere universal build/install it.*
+Main: top level script      * there is only one script going forward with OctaLang*
+Virtual environments    *Imagination, virt*
+Built-in functions
+Control flow
+Functions
+List and Tuples
+Dictionaries
+Sets
+Comprehensions
+Manipulating strings
+String formatting
+Regular expressions
+Files and directory paths
+Reading and writing files
+Json and Yaml
+Exception handling
+Debugging
+Args and Kwargs
+Decorators
+Context manager
+OOP
+Dataclasses
+setup.py
+Main: top level script
+Virtual environments
+Standard Library
+Copy
+Datetime
+Itertools
+Json
+Os
+Pathlib
+Random
+Shelve
+Zipfile*
+Standard Library
+Copy
+Datetime * everything is auto Time Stamped*
+Itertools
+Json
+Os
+Pathlib
+Random
+Shelve
+Zipfile

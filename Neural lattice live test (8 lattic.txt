@@ -1,0 +1,127 @@
+// Neural lattice live test (8 lattices, each 8x8x8 = 512 nodes)
+// Non-destructive: standalone script; does not modify existing source.
+// Run with: node scripts/neural_lattice_test.mjs
+
+const LATTICES = 8;
+const DIM = 8; // 8x8x8
+const NODES_PER_LATTICE = DIM*DIM*DIM; // 512
+const TOTAL_NODES = LATTICES * NODES_PER_LATTICE; // 4096
+
+// Address packing: 3 bits x,3 bits y,3 bits z,3 bits lattice => 12 bits total (fits in uint16)
+function packAddr(l,x,y,z){ return (l<<9) | (z<<6) | (y<<3) | x; }
+function unpackAddr(a){ return { x: a & 0x7, y: (a>>3)&0x7, z:(a>>6)&0x7, l:(a>>9)&0x7 }; }
+function nodeIndex(l,x,y,z){ return l*NODES_PER_LATTICE + (z*DIM*DIM + y*DIM + x); }
+
+// State arrays
+const potentials = new Float32Array(TOTAL_NODES); // membrane potential
+const lastFire = new Uint32Array(TOTAL_NODES); // tick of last fire
+
+// Initialize random small potentials
+for (let i=0;i<TOTAL_NODES;i++) potentials[i] = Math.random()*0.2;
+// Seed a few high-energy starter nodes to trigger cascade
+for (let l=0; l<LATTICES; l++){
+  const x = Math.floor(Math.random()*DIM);
+  const y = Math.floor(Math.random()*DIM);
+  const z = Math.floor(Math.random()*DIM);
+  potentials[nodeIndex(l,x,y,z)] = 1.25 + Math.random()*0.5;
+}
+
+// Coupling matrix (sender row -> receiver col)
+// Start with identity 1.0 self + 0.08 off-diagonal bleed forming ring plus slight global background.
+const coupling = new Float32Array(LATTICES*LATTICES);
+for (let i=0;i<LATTICES;i++){
+  for (let j=0;j<LATTICES;j++){
+    if (i===j) coupling[i*LATTICES+j] = 1.0;
+    else if ((j === (i+1)%LATTICES) || (j === (i+LATTICES-1)%LATTICES)) coupling[i*LATTICES+j] = 0.08;
+    else coupling[i*LATTICES+j] = 0.02; // faint global spill
+  }
+}
+
+// Inbound signal buckets (array of arrays of {from,strength})
+// To reduce GC, we store two typed arrays per tick: accumulate sums directly instead of individual objects.
+const inboundAccum = new Float32Array(TOTAL_NODES); // sum of strengths for current tick
+
+// Outbound signals captured temporarily (packed addresses + strength)
+let outbound = [];
+
+// Parameters
+const DECAY = 0.96;
+const THRESHOLD = 1.0;
+const REFRACTORY = 3; // ticks
+const LOCAL_GAIN = 0.18;
+const CROSS_GAIN = 0.05;
+const MAX_TICKS = 200;
+
+function emitFromNode(idx, lattice, energy){
+  const localEnergy = energy * LOCAL_GAIN;
+  const crossEnergy = energy * CROSS_GAIN;
+  // Derive xyz
+  const localIdx = idx - lattice*NODES_PER_LATTICE;
+  const z = (localIdx / (DIM*DIM))|0;
+  const y = ((localIdx - z*DIM*DIM)/DIM)|0;
+  const x = localIdx % DIM;
+  const fromAddr = packAddr(lattice,x,y,z);
+  // 6-neighborhood
+  const neigh = [ [x-1,y,z], [x+1,y,z], [x,y-1,z], [x,y+1,z], [x,y,z-1], [x,y,z+1] ];
+  for (const [nx,ny,nz] of neigh){
+    if (nx>=0 && nx<DIM && ny>=0 && ny<DIM && nz>=0 && nz<DIM){
+      const toIdx = nodeIndex(lattice,nx,ny,nz);
+      inboundAccum[toIdx] += localEnergy; // local deposit same tick (simplified synchronous)
+    }
+  }
+  // Cross-lattice: map to same coordinate in other lattices via portals (only if on edge plane to limit fan-out)
+  const isPortal = x===0 || x===DIM-1 || y===0 || y===DIM-1 || z===0 || z===DIM-1;
+  if (isPortal){
+    for (let l2=0;l2<LATTICES;l2++){
+      if (l2===lattice) continue;
+      const c = coupling[lattice*LATTICES + l2];
+      if (c <= 0) continue;
+      const gain = crossEnergy * c;
+      const toIdx = nodeIndex(l2,x,y,z);
+      inboundAccum[toIdx] += gain;
+    }
+  }
+}
+
+// Main loop
+const firesPerLattice = new Uint32Array(LATTICES);
+for (let tick=0; tick<MAX_TICKS; tick++){
+  // Decay potentials
+  for (let i=0;i<TOTAL_NODES;i++) potentials[i] *= DECAY;
+
+  // Apply inbound accumulated signals and clear accumulator
+  for (let i=0;i<TOTAL_NODES;i++){
+    if (inboundAccum[i] !== 0){
+      potentials[i] += inboundAccum[i];
+      inboundAccum[i] = 0;
+    }
+  }
+
+  // Firing phase
+  for (let lattice=0; lattice<LATTICES; lattice++){
+    for (let local=0; local<NODES_PER_LATTICE; local++){
+      const idx = lattice*NODES_PER_LATTICE + local;
+      if (tick - lastFire[idx] < REFRACTORY) continue;
+      const p = potentials[idx];
+      if (p > THRESHOLD){
+        firesPerLattice[lattice]++;
+        lastFire[idx] = tick;
+        emitFromNode(idx, lattice, p);
+        // partial reset residual potential
+        potentials[idx] = 0.25;
+      }
+    }
+  }
+
+  if ((tick+1) % 25 === 0 || tick===MAX_TICKS-1){
+    const sum = firesPerLattice.reduce((a,b)=>a+b,0);
+    const per = Array.from(firesPerLattice).map(v=>v.toString().padStart(5,' ')).join(' ');
+    console.log(`Tick ${tick+1} Fires total=${sum} perLattice=${per}`);
+  }
+}
+
+// Stability checks
+let maxPot = 0, minPot = Infinity;
+for (let i=0;i<TOTAL_NODES;i++){ const p = potentials[i]; if (p>maxPot) maxPot=p; if (p<minPot) minPot=p; }
+console.log('Final potential range', { min: Number(minPot.toFixed(4)), max: Number(maxPot.toFixed(4)) });
+console.log('Completed lattice live test successfully.');

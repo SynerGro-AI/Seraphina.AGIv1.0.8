@@ -1,0 +1,112 @@
+# OctaLang Full Grammar Outline (Without Color Coding)
+# Three-Tier Reference System: Keyboard | Symbols | Emoji
+
+## Tier 1: Keyboard (Standard Characters)
+- Purpose: Core syntax for variables, types, functions, and coordinates.
+- Elements:
+  - Alphanumeric: Define lattices, functions, variables (e.g., lattice, fn, var).
+  - Coordinates: (x,y,z) for 3D/4D lattice nodes.
+  - Strings: Enclose in quotes (e.g., "Arduino_R4").
+  - Keywords: lattice, fn, type, var, return, for, if.
+- Examples:
+  - lattice MyLattice: ...
+  - fn process_data(lattice: MyLattice) -> float:
+  - node (0,0,0) => {device: "Quartz_Castle"}
+
+## Tier 2: Symbols (Special Characters)
+- Purpose: Operations and data compression.
+- Elements:
+  - => : Assigns node properties.
+  - -> : Output or flow direction.
+  - <-> : Bidirectional lattice connections.
+  - ... : Recursive data folding.
+  - % : Data compression.
+  - | : Separates tiers or alternatives.
+  - = : Assigns values.
+  - [] : Arrays.
+  - {} : Node or object properties.
+- Examples:
+  - data: quartz_read_usb() % qsuperpose
+  - <-> 📏 ⬅️➡️
+
+## Tier 3: Emoji (Visual Mnemonics)
+- Purpose: Visual cues for nodes, AI, and operations.
+- Elements:
+  - 🌀 : Lattice declaration.
+  - ⬣ : Lattice structure marker.
+  - 📍 : Node marker.
+  - ➡️ : Unidirectional bridge.
+  - ⬅️➡️ : Bidirectional bridge.
+  - 🤖 : SynerGro.AI bot interaction.
+  - 💻 : Output or execution.
+  - 🛠️ : Function definition.
+  - 📋 : Variable declaration.
+  - 🔄 : Loop.
+  - ❓ : Conditional.
+  - 🔗 : Data connection.
+  - 🔢 : Computation.
+  - 🏷️ : Type definition.
+  - ⊽ : Variable or type scope.
+  - ⊼ : Node or return scope.
+- Examples:
+  - node (0,0,0) => {device: "Arduino_R4"} # 📍 ⊼ ➡️ 🤖
+  - return result 🔙 ⊼return
+
+## Quantum Operations
+- Purpose: Quantum computations for lattice processing.
+- Elements:
+  - qentangle(x,y,z) : Entangles node coordinates.
+  - qsuperpose(values) : Superposes values.
+  - qdot(a, b) : Quantum dot product.
+  - qverify(state, weights) : Validates quantum state.
+  - qrelu(value) : Quantum ReLU activation.
+- Examples:
+  - qstate: qentangle(0,0,0)
+  - qdot(node.data, qsuperpose([0.1, 0.2]))
+
+## Device Integration
+- Purpose: Plug-and-play device management.
+- Elements:
+  - sensor_read_wifi() : Reads Arduino R4 sensor data.
+  - quartz_read_usb() : Reads Crystal Castle Module signals.
+  - scan_devices("USB", "WiFi") : Auto-detects devices.
+  - file_read("path") : Reads file data.
+- Examples:
+  - node (0,0,0) => {device: "Arduino_R4", data: sensor_read_wifi()}
+  - data: file_read("shroud.png")
+
+## Data-Sensory Functions
+- Purpose: Sensory processing for data mapping.
+- Elements:
+  - sound_editor_visual(image, freq_range) : Generates spectrogram.
+  - wavelength_to_freq(wavelength) : Converts wavelength to frequency.
+  - spectrogram_contains(spectrogram, freq) : Checks frequency presence.
+  - spectrogram_extract(spectrogram, freq) : Extracts frequency data.
+- Examples:
+  - var spectrogram = sound_editor_visual(image, freq_range: [100, 10000])
+  - freq = wavelength_to_freq([620, 750])
+
+## Output and Visualization
+- Purpose: Output and GUI visualization.
+- Elements:
+  - return ... 🔙 ⊼return : Returns function output.
+  - sandbox_simulate(result, iterations) : Tests in Imagination Sandbox.
+  - copilot_log(message) : Logs to GUI copilot.
+- Examples:
+  - return phrase 🔙 ⊼return
+  - copilot_log("Added node")
+
+## Example Script
+constants MyData: 🌀 ⬣
+    Key = {value: 0.1}
+-> 💻 ➡️
+lattice MyLattice: 🌀 ⬣
+    type Node = {device: string, data: float, qstate: quantum, timestamp: uint64, hash: string} 🏷️ ⊽type
+    node (0,0,0) => {device: "Arduino_R4", data: sensor_read_wifi(), qstate: qentangle(0,0,0), timestamp: 1757103369177, hash: "40dc02836bee..."} # 📍 ⊼ ➡️ 🤖
+<-> 📏 ⬅️➡️
+fn process_data(lattice: MyLattice) -> float: 🛠️ ⬢ ➡️
+    var sum = 0.0 📋 ⊽
+    for node in lattice: 🔄 ⊶
+        sum = sum + qdot(node.data, qsuperpose([0.1, 0.2])) 🔗 ≺ 🔢
+    return sum 🔙 ⊼return
+-> 💻 ➡️

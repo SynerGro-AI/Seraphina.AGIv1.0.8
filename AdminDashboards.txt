@@ -1,0 +1,57 @@
+import React from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import ApiKeyGeneratorPanel from '@/components/ControlPanel/ApiKeyGeneratorPanel';
+import IssuedKeysPanel from '@/components/ControlPanel/IssuedKeysPanel';
+import NeuralLatticeMetricsPanel from '@/components/NeuralLatticeMetricsPanel';
+import PeakImpulseLog from './PeakImpulseLog';
+import BitProcessorStatus from './BitProcessorStatus';
+import { Shield, Key, Activity, Database } from 'lucide-react';
+import BrainWaveScanner from './BrainWaveScanner';
+
+// BrainWaveScanner component now provides synthetic band visualization
+
+const AdministrationDashboard: React.FC = () => {
+  return (
+    <div className="space-y-6 p-4">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="bg-black/40 border-blue-500/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm text-blue-300"><Key className="h-4 w-4" /> API Key Issuance</CardTitle>
+            </CardHeader>
+            <CardContent className="grid md:grid-cols-2 gap-4">
+              <ApiKeyGeneratorPanel />
+              <IssuedKeysPanel />
+            </CardContent>
+          </Card>
+          <Card className="bg-black/40 border-green-500/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm text-green-300"><Database className="h-4 w-4" /> Neural Lattice Metrics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <NeuralLatticeMetricsPanel />
+              <div className="mt-4 grid md:grid-cols-2 gap-4">
+                <PeakImpulseLog />
+                <BitProcessorStatus />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="space-y-4">
+          <BrainWaveScanner />
+          <Card className="bg-black/40 border-cyan-500/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm text-cyan-300"><Shield className="h-4 w-4" /> Administrative Notices</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-300 space-y-2">
+              <p>Configure environment vars before launch to secure internal API (SERAPHINA_INTERNAL_API_SECRET).</p>
+              <p>Metrics are locally stored only; no external transmission implemented.</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AdministrationDashboard;

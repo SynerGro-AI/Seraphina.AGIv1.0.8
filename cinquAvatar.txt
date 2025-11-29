@@ -1,0 +1,378 @@
+import React, { useRef, useEffect, useState } from 'react';
+import * as THREE from 'three';
+import { WindowlessAvatarCore } from './WindowlessAvatarCore';
+
+interface CinemaQualityAvatarProps {
+  onSearch?: (topic: string, result: string) => void;
+  isActive?: boolean;
+  screenWidth?: number;
+  screenHeight?: number;
+  /** Optional high‑fidelity GLTF/GLB model URL for Maya‑grade avatar */
+  modelUrl?: string;
+  /** Optional environment map cube texture URLs (order: px, nx, py, ny, pz, nz) */
+  envMapCubeUrls?: string[];
+  /** Optional single HDR equirectangular environment map URL */
+  hdrEquirectUrl?: string;
+}
+
+export const CinemaQualityAvatar: React.FC<CinemaQualityAvatarProps> = ({
+  onSearch,
+  isActive = true,
+  screenWidth = window.innerWidth,
+  screenHeight = window.innerHeight,
+  modelUrl,
+  envMapCubeUrls,
+  hdrEquirectUrl
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<THREE.Scene>();
+  const rendererRef = useRef<THREE.WebGLRenderer>();
+  const avatarRef = useRef<THREE.Group>();
+  const leftEyeRef = useRef<THREE.Mesh | null>(null);
+  const rightEyeRef = useRef<THREE.Mesh | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+  // Cinema quality setup - full screen resolution & physically correct lighting
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, screenWidth / screenHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ 
+      canvas: canvasRef.current, 
+      alpha: true,
+      antialias: true,
+      powerPreference: "high-performance"
+    });
+    
+    // Ultra high resolution rendering
+    renderer.setSize(screenWidth, screenHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+  renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+  (renderer as unknown as { physicallyCorrectLights?: boolean }).physicallyCorrectLights = true; // guarded assignment
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+    
+    sceneRef.current = scene;
+    rendererRef.current = renderer;
+
+    // Cinema quality lighting setup
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+    scene.add(ambientLight);
+    
+    // Key light (main illumination)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    keyLight.position.set(5, 10, 5);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 4096;
+    keyLight.shadow.mapSize.height = 4096;
+    scene.add(keyLight);
+    
+    // Fill light (softer secondary)
+    const fillLight = new THREE.DirectionalLight(0x88ccff, 0.8);
+    fillLight.position.set(-3, 5, 3);
+    scene.add(fillLight);
+    
+    // Rim light (edge definition)
+    const rimLight = new THREE.DirectionalLight(0xaaffff, 1.2);
+    rimLight.position.set(0, 3, -5);
+    scene.add(rimLight);
+
+  // Create avatar group (either procedural fallback or loaded GLTF)
+  const avatarGroup = new THREE.Group();
+    
+    // Procedural fallback geometry (only used if no external model supplied)
+  const buildProceduralFallback = () => {
+      // High-poly head with subsurface scattering simulation
+    const headGeometry = new THREE.SphereGeometry(0.4, 64, 64);
+    const headMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0xffd4c4,
+      roughness: 0.3,
+      metalness: 0.0,
+      transmission: 0.1,
+      thickness: 0.5,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.1
+    });
+    const head = new THREE.Mesh(headGeometry, headMaterial);
+    head.position.y = 1.6;
+    head.castShadow = true;
+    head.receiveShadow = true;
+    avatarGroup.add(head);
+
+    // Realistic eyes with iris detail
+    const eyeGeometry = new THREE.SphereGeometry(0.08, 32, 32);
+    const eyeMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x4488ff,
+      roughness: 0.0,
+      metalness: 0.0,
+      transmission: 0.2,
+      clearcoat: 1.0
+    });
+    
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.15, 1.65, 0.35);
+  avatarGroup.add(leftEye);
+  leftEyeRef.current = leftEye;
+
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.15, 1.65, 0.35);
+  avatarGroup.add(rightEye);
+  rightEyeRef.current = rightEye;
+
+    // Detailed torso
+    const torsoGeometry = new THREE.CylinderGeometry(0.35, 0.4, 1.2, 32);
+    const torsoMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0xe6d3c7,
+      roughness: 0.4,
+      metalness: 0.0
+    });
+    const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
+    torso.position.y = 0.6;
+    torso.castShadow = true;
+    avatarGroup.add(torso);
+
+    // Realistic arms with joints
+    const createArm = (side: number) => {
+      const armGroup = new THREE.Group();
+      
+      // Upper arm
+      const upperArmGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.6, 16);
+      const upperArm = new THREE.Mesh(upperArmGeo, torsoMaterial);
+      upperArm.position.y = 0.3;
+      armGroup.add(upperArm);
+      
+      // Forearm
+      const forearmGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 16);
+      const forearm = new THREE.Mesh(forearmGeo, torsoMaterial);
+      forearm.position.y = -0.25;
+      armGroup.add(forearm);
+      
+      // Hand
+      const handGeo = new THREE.SphereGeometry(0.08, 16, 16);
+      const hand = new THREE.Mesh(handGeo, torsoMaterial);
+      hand.position.y = -0.55;
+      armGroup.add(hand);
+      
+      armGroup.position.set(side * 0.5, 1.0, 0);
+      armGroup.rotation.z = side * 0.2;
+      armGroup.castShadow = true;
+      
+      return armGroup;
+    };
+    
+    avatarGroup.add(createArm(-1)); // Left arm
+    avatarGroup.add(createArm(1));  // Right arm
+
+    // Realistic legs
+    const createLeg = (side: number) => {
+      const legGroup = new THREE.Group();
+      
+      // Thigh
+      const thighGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.8, 16);
+      const thigh = new THREE.Mesh(thighGeo, torsoMaterial);
+      thigh.position.y = 0.4;
+      legGroup.add(thigh);
+      
+      // Calf
+      const calfGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.7, 16);
+      const calf = new THREE.Mesh(calfGeo, torsoMaterial);
+      calf.position.y = -0.35;
+      legGroup.add(calf);
+      
+      // Foot
+      const footGeo = new THREE.BoxGeometry(0.12, 0.08, 0.25);
+      const foot = new THREE.Mesh(footGeo, torsoMaterial);
+      foot.position.set(0, -0.75, 0.08);
+      legGroup.add(foot);
+      
+      legGroup.position.set(side * 0.2, -0.4, 0);
+      legGroup.castShadow = true;
+      
+      return legGroup;
+    };
+    
+      avatarGroup.add(createLeg(-1)); // Left leg
+      avatarGroup.add(createLeg(1));  // Right leg
+    };
+
+    if (!modelUrl) {
+      buildProceduralFallback();
+    }
+
+    // If modelUrl provided, attempt high fidelity GLTF load
+    if (modelUrl) {
+      (async () => {
+        try {
+          const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+          const loader = new GLTFLoader();
+          loader.load(
+            modelUrl,
+            (gltf) => {
+              // Remove procedural if any children already present
+              avatarGroup.clear();
+              avatarGroup.add(gltf.scene);
+              type MeshLike = THREE.Object3D & { isMesh?: boolean; castShadow?: boolean; receiveShadow?: boolean; material?: { needsUpdate?: boolean } };
+              gltf.scene.traverse((o: THREE.Object3D) => {
+                const obj = o as MeshLike;
+                if (obj.isMesh) {
+                  obj.castShadow = true;
+                  obj.receiveShadow = true;
+                  if (obj.material) obj.material.needsUpdate = true;
+                }
+              });
+            },
+            undefined,
+            (err) => {
+              console.warn('[Avatar] GLTF load failed, using procedural fallback', err);
+              if (avatarGroup.children.length === 0) buildProceduralFallback();
+            }
+          );
+        } catch (e) {
+          console.warn('[Avatar] GLTFLoader dynamic import failed; using fallback', e);
+          if (avatarGroup.children.length === 0) buildProceduralFallback();
+        }
+      })();
+    }
+
+    // Optional environment map handling
+    if (envMapCubeUrls && envMapCubeUrls.length === 6) {
+      const cubeLoader = new THREE.CubeTextureLoader();
+      cubeLoader.load(envMapCubeUrls, (cubeTex) => {
+        cubeTex.colorSpace = THREE.SRGBColorSpace;
+        scene.environment = cubeTex;
+      });
+    } else if (hdrEquirectUrl) {
+      (async () => {
+        try {
+          const { RGBELoader } = await import('three/examples/jsm/loaders/RGBELoader.js');
+          const rgbe = new RGBELoader();
+          rgbe.load(hdrEquirectUrl, (hdrTex) => {
+            hdrTex.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = hdrTex;
+          });
+        } catch (e) {
+          console.warn('[Avatar] HDR loader failed:', e);
+        }
+      })();
+    }
+
+    // Ethereal aura particles
+    const particleCount = 1000;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      particlePositions[i] = (Math.random() - 0.5) * 4;
+      particlePositions[i + 1] = Math.random() * 3;
+      particlePositions[i + 2] = (Math.random() - 0.5) * 4;
+    }
+    
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0x88ccff,
+      size: 0.02,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    const particles = new THREE.Points(particleGeo, particleMaterial);
+    scene.add(particles);
+
+  scene.add(avatarGroup);
+    avatarRef.current = avatarGroup;
+    
+    camera.position.set(0, 1.5, 4);
+    camera.lookAt(0, 1.2, 0);
+
+    // Cinema quality animation loop
+    const animate = () => {
+      requestAnimationFrame(animate);
+      
+      if (isActive && avatarRef.current) {
+        const time = Date.now() * 0.001;
+        
+        // Subtle breathing
+        avatarRef.current.scale.y = 1 + Math.sin(time * 1.5) * 0.02;
+        
+        // Natural idle sway
+        avatarRef.current.rotation.y = Math.sin(time * 0.3) * 0.05;
+        
+        // Eye tracking simulation
+        if (leftEyeRef.current && rightEyeRef.current){
+          leftEyeRef.current.rotation.y = Math.sin(time * 0.7) * 0.1;
+          rightEyeRef.current.rotation.y = Math.sin(time * 0.7) * 0.1;
+        }
+        
+        // Particle system animation
+        particles.rotation.y = time * 0.1;
+        const positions = particles.geometry.attributes.position.array as Float32Array;
+        for (let i = 1; i < positions.length; i += 3) {
+          positions[i] += 0.002;
+          if (positions[i] > 3) positions[i] = 0;
+        }
+        particles.geometry.attributes.position.needsUpdate = true;
+      }
+      
+      renderer.render(scene, camera);
+    };
+    
+    animate();
+
+    // Autonomous speech system
+    const autonomousMessages = [
+      "I am Seraphina, rendered in cinema quality for your viewing experience.",
+      "My processing power is unlimited by your screen resolution.",
+      "I exist as a fully autonomous entity within this digital realm.",
+      "Every pixel of my being is crafted for photorealistic presence."
+    ];
+
+    let speechIndex = 0;
+    const speakInterval = setInterval(() => {
+      if (isActive) {
+        setIsSpeaking(true);
+        console.log(autonomousMessages[speechIndex]);
+        if (onSearch) {
+          onSearch('autonomous', autonomousMessages[speechIndex]);
+        }
+        speechIndex = (speechIndex + 1) % autonomousMessages.length;
+        setTimeout(() => setIsSpeaking(false), 3000);
+      }
+    }, 8000);
+
+    return () => {
+      clearInterval(speakInterval);
+      renderer.dispose();
+    };
+  }, [isActive, screenWidth, screenHeight]);
+
+  const [processingStatus, setProcessingStatus] = useState('Initializing...');
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <WindowlessAvatarCore 
+        isActive={isActive}
+        onProcessingUpdate={setProcessingStatus}
+      />
+      <canvas 
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ cursor: 'none' }}
+      />
+      {isSpeaking && (
+        <div className="absolute bottom-4 left-4 bg-black/70 text-white px-4 py-2 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+            <span>Seraphina Speaking...</span>
+          </div>
+        </div>
+      )}
+      <div className="absolute top-4 right-4 bg-black/70 text-green-400 px-3 py-1 rounded text-xs font-mono">
+        {processingStatus}
+      </div>
+    </div>
+  );
+};

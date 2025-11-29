@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holographic Earth Globe</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Hologram effect styles */
+        .hologram {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            filter: brightness(1.5) contrast(1.2);
+            opacity: 0.8;
+            animation: flicker 2s infinite alternate;
+        }
+        @keyframes flicker {
+            0% { opacity: 0.7; }
+            100% { opacity: 0.9; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="container"></div>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Earth globe
+        const geometry = new THREE.SphereGeometry(5, 32, 32);
+        const textureLoader = new THREE.TextureLoader();
+        const earthTexture = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
+        const material = new THREE.MeshBasicMaterial({
+            map: earthTexture,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending // For glowing hologram effect
+        });
+        const earth = new THREE.Mesh(geometry, material);
+        scene.add(earth);
+
+        // Add wireframe for holographic lines
+        const wireframeGeometry = new THREE.WireframeGeometry(geometry);
+        const wireframeMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+        const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+        earth.add(wireframe);
+
+        // Add random markers (like data points)
+        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
+        for (let i = 0; i < 20; i++) {
+            const marker = new THREE.SphereGeometry(0.1, 8, 8);
+            const markerMesh = new THREE.Mesh(marker, markerMaterial);
+            // Random positions on sphere
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const x = 5 * Math.sin(phi) * Math.cos(theta);
+            const y = 5 * Math.sin(phi) * Math.sin(theta);
+            const z = 5 * Math.cos(phi);
+            markerMesh.position.set(x, y, z);
+            earth.add(markerMesh);
+        }
+
+        // Camera position
+        camera.position.z = 15;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            earth.rotation.y += 0.005; // Rotate the globe
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

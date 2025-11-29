@@ -1,0 +1,53 @@
+# Third-Party Notices
+
+This application bundles certain third-party open source components. We are not obligated to open source proprietary application code; we simply provide attribution to uphold license requirements and good engineering hygiene.
+
+Only permissive licenses (MIT, BSD, Apache-2.0, ISC, Zlib) are included. No copyleft (GPL/AGPL/LGPL/MPL/SSPL) code is shipped. A Creative Commons BY data set (caniuse-lite) is used only for build-time browser compatibility metadata.
+
+## Core Runtime Libraries
+- React (MIT)
+- React DOM (MIT)
+- React Router DOM (MIT)
+- @tanstack/react-query (MIT)
+- three (MIT) – may be vendor bundled locally; MIT permits commercial use without reciprocal release.
+- Electron (MIT)
+
+## UI & Styling
+- Radix UI Primitives (MIT)
+- class-variance-authority (MIT)
+- clsx (MIT)
+- tailwindcss (MIT), tailwindcss-animate (MIT), tailwind-merge (MIT)
+
+## Forms & Validation
+- react-hook-form (MIT)
+- zod (MIT)
+- @hookform/resolvers (MIT)
+
+## Utilities
+- date-fns (MIT)
+- uuid (MIT)
+- marked (MIT)
+- highlight.js (BSD-3-Clause)
+- embla-carousel-react (MIT)
+- lucide-react (ISC)
+- sonner (MIT)
+
+## Build / Tooling (Dev Only)
+- Vite (MIT)
+- TypeScript (Apache-2.0)
+- ESLint & plugins (MIT / Apache-2.0)
+- electron-builder (MIT)
+- postcss, autoprefixer (MIT)
+- caniuse-lite (CC-BY-4.0 data) – data only; acceptable for commercial use with attribution; included indirectly via browserslist.
+
+## Data & External Links
+External hyperlinks opened in the UI (w3schools, Wikipedia, Khan Academy, Coursera, edX, USCCB) are user-directed navigations, not embedded libraries or bundled assets.
+
+## Compliance Summary
+- No GPL / AGPL / LGPL / MPL / SSPL code detected in dependency tree.
+- All runtime licenses are permissive; none impose source disclosure of proprietary code.
+- Creative Commons BY dataset (caniuse-lite) used for build tooling only; attribution satisfied by this notice.
+
+If a new dependency is added, ensure its license appears in this file and passes the permissive-only policy.
+
+_Last updated: 2025-08-15_

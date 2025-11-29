@@ -1,0 +1,40 @@
+Tier	Type	Description	Examples
+Tier 1: Keyboard	Alphanumeric	Keywords for variables, functions, lattices, .NET types, and core constructs	lattice, fn, var, netform, wpf, netassembly, netconsole, colorwheel, installer, runtime, optimize, projection2d, proko, neural_gpu, chat, leaderboard, rigidbody, softbody, fluid, thermodynamics | Example: netform TesseractForm: 🌀 | colorwheel TesseractColors: 🌀 colors =>* 43200
+Tier 1: Keyboard	Coordinates	4D node coordinates for lattices	(x,y,z,w) | Example: node (0,0,0) => {flow: 1.5}
+Tier 1: Keyboard	Strings	Literals for file names, messages, etc.	"shroud.png", "System.Windows.Forms.dll" | Example: netassembly load("System.Windows.Forms.dll") =>net {version: "4.0.0.0"}
+Tier 2: Symbols	=>	Assign properties to nodes, components, or configurations	node (0,0,0) => {flow: 1.5}
+Tier 2: Symbols	=>net	Load .NET assembly or call .NET method	netform =>net {title: "OctaLang Game", size: [800,600]}
+Tier 2: Symbols	->net	Output to .NET runtime (e.g., console, form)	->net form.ShowDialog()
+Tier 2: Symbols	~net	Probe .NET assembly load status	~net load "System.Windows.Forms.dll" = true
+Tier 2: Symbols	%net	Marshal data to .NET types	float %net double
+Tier 2: Symbols	|net	Separate .NET blocks	netform TesseractForm: 🌀 |net button =>net {text: "Run Game"}
+Tier 2: Symbols	=>color	Assign color wheel properties	colorwheel TesseractColors =>color {colors: 43200}
+Tier 2: Symbols	->color	Apply color wheel to rendering	->color shader
+Tier 2: Symbols	=>phi	Assign golden ratio properties	golden_ratio Phi =>phi {value: 1.618033988749895}
+Tier 2: Symbols	->phi	Apply golden ratio to rendering/layout	->phi shader
+Tier 2: Symbols	=>install	Assign installer properties	installer TesseractInstaller =>install {output: "TesseractApp-installer"}
+Tier 2: Symbols	->install	Build and package installer	->install platforms
+Tier 2: Symbols	-> 💻	Output to console (maps to Write-Host)	-> 💻 ➡️ "Rendering frame"
+Tier 2: Symbols	=>runtime, ->runtime, =>proj, ->proj, =>proko, =>ngpu, ->ngpu, =>chat, ->chat, =>leader, ->leader	Manage runtime, projection, Proko, neural GPU, chat, and leaderboard	runtime OctaPro =>runtime {neurons: 150000} | ->proj viewport
+Tier 3: Emoji	🌀	Lattice/scene declaration	lattice BuildChain: 🌀
+Tier 3: Emoji	📍	Node/vertex marker	node (0,0,0) => {flow: 1.5} # 📍
+Tier 3: Emoji	🖥️net	.NET form/window	netform TesseractForm =>net {title: "OctaLang Game"} 🖥️net
+Tier 3: Emoji	💻net	.NET console output	->net console "Hello, OctaLang!" 💻net
+Tier 3: Emoji	🔌net	.NET assembly load	netassembly load("System.Windows.Forms.dll") 🔌net
+Tier 3: Emoji	🎨color	Color wheel application	colorwheel TesseractColors =>color {colors: 43200} 🎨color
+Tier 3: Emoji	🌟	Golden ratio application	golden_ratio Phi =>phi {value: 1.618033988749895} 🌟
+Tier 3: Emoji	📦	Installer packaging	installer TesseractInstaller =>install {output: "TesseractApp-installer"} 📦
+Tier 3: Emoji	💻	Console output	-> 💻 ➡️ "Building installer"
+Tier 3: Emoji	⚙️	Runtime optimization	runtime OctaPro =>runtime {neurons: 150000} ⚙️
+Tier 3: Emoji	📽️	3D-to-2D projection	->proj viewport 📽️
+Tier 3: Emoji	📝	Proko techniques	proko gesture =>proko {dynamic_lines: true} 📝
+Tier 3: Emoji	🧠	Neural GPU processing	neural_gpu Seraphina =>ngpu {neurons: 150000} 🧠
+Tier 3: Emoji	🧩	WASM compilation	unifiedbuild TesseractApp =>wasm {file: "app.wasm"} 🧩
+Tier 3: Emoji	🎮	Game loop	game TesseractGame: 🎮
+Tier 3: Emoji	👥	Multiplayer setup	multiplayer websocket =>multi {url: "ws://synergro.ai:8080"} 👥
+Tier 3: Emoji	💬	Chat functionality	chat websocket =>chat {url: "ws://synergro.ai:8080"} 💬
+Tier 3: Emoji	🏆	Leaderboard	leaderboard time =>leader {top: 10} 🏆
+Tier 3: Emoji	🪨	Rigid body physics	rigidbody Tesseract =>game {mass: 1.0} 🪨
+Tier 3: Emoji	🧶	Soft body physics	softbody Cloth =>game {stiffness: 0.5} 🧶
+Tier 3: Emoji	💧	Fluid physics	fluid Water =>game {viscosity: 0.01} 💧
+Tier 3: Emoji	🔥🔥	Thermodynamics	thermodynamics Heat =>game {temp: 300} 🔥🔥
