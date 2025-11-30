@@ -1,0 +1,9 @@
+{
+  "name": "seraphina-agi-core",
+  "version": "0.1.0",
+  "description": "AGI-only core runner for Seraphina: no wallets, no mining — AI components only.",
+  "bin": {
+    "seraphina-agi-core": "./run-agi.js"
+  },
+  "engines": { "node": ">=14" }
+}

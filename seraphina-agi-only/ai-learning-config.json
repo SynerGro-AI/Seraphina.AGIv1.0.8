@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "modules": {
+    "mlAdvisor": {
+      "weightsFile": "ml-advisor-weights.json",
+      "trainScript": "ml-train-deterministic.js",
+      "scoreboard": "ml-train-scoreboard.json",
+      "ledger": "ml-train-ledger.jsonl",
+      "features": ["acceptRatio","latencyMedian","incomeSpread","biasFREN","biasRVN"],
+      "optimization": {
+        "method": "grid",
+        "candidatesEnv": "ML_TRAIN_CANDIDATES",
+        "improveThresholdEnv": "ML_TRAIN_IMPROVE_MIN"
+      }
+    },
+    "trading": {
+      "signals": "trading-signals.jsonl",
+      "learnedLedger": "trading-learned-state.jsonl",
+      "performanceScoreboard": "trading-scoreboard.json",
+      "regime": {
+        "calmMaxVol": 0.02,
+        "moderateMaxVol": 0.07
+      }
+    }
+    ,"imagination": {
+      "adapterScript": "seraphina-3d-imagination-adapter.js",
+      "ledger": "imagination-ledger.jsonl",
+      "scenariosFile": "imagination-scenarios.json",
+      "enableParam": "IMAGINATION_ENABLED",
+      "maxScenariosParam": "IMAGINATION_MAX_SCENARIOS",
+      "defaultMaxScenarios": 32,
+      "latticeDefaults": { "shells": 3, "pointsPerShell": 48, "radiusBase": 1.0 }
+    }
+    ,"seraphina": {
+      "trainScript": "seraphina-train-deterministic.js",
+      "scoreboard": "seraphina-train-scoreboard.json",
+      "ledger": "seraphina-train-ledger.jsonl",
+      "weightsIn": "seraphina-weights.json",
+      "weightsOut": "seraphina-weights-trained.json",
+      "improveThresholdEnv": "SERAPHINA_TRAIN_IMPROVE_MIN",
+      "candidatesEnv": "SERAPHINA_TRAIN_CANDIDATES"
+    }
+  },
+  "governance": {
+    "adjustableParams": ["SWAP_FEE_RATE","LEARNED_START_MULTI","LEARNED_MIN_MULTI","LEARNED_MAX_MULTI"],
+    "proposalFile": "governance-proposals.jsonl",
+    "decisionFile": "governance-decisions.jsonl"
+  },
+  "datasets": {
+    "maxSignals": 8000,
+    "maxLearned": 8000
+  }
+}
