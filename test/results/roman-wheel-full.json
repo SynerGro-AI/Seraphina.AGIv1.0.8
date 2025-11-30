@@ -1,0 +1,91 @@
+{
+  "timestamp": "2025-11-30T13:08:53.587Z",
+  "job": {
+    "part1": "00010203aabbccddeeff",
+    "coinb1": "",
+    "jobId": "test-job-001"
+  },
+  "extranonce1": "deadbeefcafebabe",
+  "outputs": {
+    "run1": {
+      "planeSeeds": [
+        "02bb6d587896ca235743bd9942973683a5dfc3540af52a7d573d572d60556ed4",
+        "65f19f302ec3c5293f7f17de05114f539c10f76d2354419d13788d39dc12f3b5",
+        "5b7b99c632a762e12780e164bf9eecc2a1eb0085111918ba44dbec54b5b2941b",
+        "07b94ea6c99bb0b6517442c23a2a8566bb02fb209dcc93f17b5ef93c8d3daae8"
+      ],
+      "aggregate": "e87aa014f0d5249f5990dde8b37de76618a085df0785db8516d8fedc172ae3fa",
+      "wheels": [
+        {
+          "plane": "xy",
+          "freq": 438,
+          "hue": 567,
+          "theta": 0.734505201,
+          "r": 0.567
+        },
+        {
+          "plane": "xz",
+          "freq": 417,
+          "hue": 624,
+          "theta": 0.621825307,
+          "r": 0.624
+        },
+        {
+          "plane": "yz",
+          "freq": 417,
+          "hue": 582,
+          "theta": 0.740396003,
+          "r": 0.582
+        },
+        {
+          "plane": "w4d",
+          "freq": 430,
+          "hue": 652,
+          "theta": 0.452805466,
+          "r": 0.652
+        }
+      ]
+    },
+    "run2": {
+      "planeSeeds": [
+        "02bb6d587896ca235743bd9942973683a5dfc3540af52a7d573d572d60556ed4",
+        "65f19f302ec3c5293f7f17de05114f539c10f76d2354419d13788d39dc12f3b5",
+        "5b7b99c632a762e12780e164bf9eecc2a1eb0085111918ba44dbec54b5b2941b",
+        "07b94ea6c99bb0b6517442c23a2a8566bb02fb209dcc93f17b5ef93c8d3daae8"
+      ],
+      "aggregate": "e87aa014f0d5249f5990dde8b37de76618a085df0785db8516d8fedc172ae3fa",
+      "wheels": [
+        {
+          "plane": "xy",
+          "freq": 438,
+          "hue": 567,
+          "theta": 0.734505201,
+          "r": 0.567
+        },
+        {
+          "plane": "xz",
+          "freq": 417,
+          "hue": 624,
+          "theta": 0.621825307,
+          "r": 0.624
+        },
+        {
+          "plane": "yz",
+          "freq": 417,
+          "hue": 582,
+          "theta": 0.740396003,
+          "r": 0.582
+        },
+        {
+          "plane": "w4d",
+          "freq": 430,
+          "hue": 652,
+          "theta": 0.452805466,
+          "r": 0.652
+        }
+      ]
+    },
+    "deterministicMatch": true
+  },
+  "testHarnessOutput": "[test] buildPlaneSeeds determinism checks passed\n[test] API shape checks passed\n[test] All roman-wheel tests passed\n"
+}
