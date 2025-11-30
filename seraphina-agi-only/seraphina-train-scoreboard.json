@@ -1,0 +1,33 @@
+{
+  "ts": "2025-11-30T22:49:40.479Z",
+  "signalsDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "imaginationDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "candidateCount": 20,
+  "base": {
+    "vector": [
+      0.5,
+      -0.2,
+      0.3,
+      0.15,
+      0.1
+    ],
+    "score": 0,
+    "gain": 0,
+    "penalty": 0,
+    "churn": 0
+  },
+  "best": {
+    "vector": [
+      0.48,
+      -0.2,
+      0.26,
+      0.07,
+      0.12
+    ],
+    "score": 0,
+    "gain": 0,
+    "penalty": 0,
+    "churn": 0
+  },
+  "improvementPct": 0
+}

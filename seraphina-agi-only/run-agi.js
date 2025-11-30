@@ -12,10 +12,10 @@
 const http = require('http');
 const path = require('path');
 
-const ROOT = path.join(__dirname, '..');
-const ENGINE_PATH = path.join(__dirname, '..', 'advanced-language-engine.js');
-const ORCH_PATH = path.join(__dirname, '..', 'ai-learning-orchestrator.js');
-const AGI_OPT_PATH = path.join(__dirname, '..', 'agi-self-optimizer.js');
+const ROOT = __dirname;
+const ENGINE_PATH = path.join(__dirname, 'advanced-language-engine.js');
+const ORCH_PATH = path.join(__dirname, 'ai-learning-orchestrator.js');
+const AGI_OPT_PATH = path.join(__dirname, 'agi-self-optimizer.js');
 
 function safeRequire(p){ try { return require(p); } catch(e){ return null; } }
 

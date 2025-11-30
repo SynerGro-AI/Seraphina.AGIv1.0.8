@@ -145,7 +145,7 @@ class AdvancedLanguageEngine {
       const baseKey = this.generateFrequencyEncryptionKey(data.frequency);
       // Spiral modulation: pass baseKey hex through roman wheels
       const baseHex = Buffer.from(baseKey).toString('hex');
-      const decoded = this.romanWheels.reduce((acc,w)=> w.decode(acc), baseHex);
+      const decoded = this.romanWheels.reduce((acc,w)=> w.decodeData(acc), baseHex);
       const modBytes = Buffer.from(decoded.padEnd(baseHex.length,'0').slice(0, baseHex.length), 'hex');
       const finalKey = Array.from(modBytes).map((b,i)=> (b ^ baseKey[i%baseKey.length]) & 0xFF);
       this.octabitEncryption.frequency_cipher.set(code, {

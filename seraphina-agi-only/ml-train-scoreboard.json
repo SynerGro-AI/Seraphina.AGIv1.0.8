@@ -1,0 +1,35 @@
+{
+  "ts": "2025-11-30T22:49:38.903Z",
+  "metric": "netGain",
+  "feesMode": "netSpread",
+  "candidateCount": 24,
+  "base": {
+    "vector": [
+      0.35,
+      -0.15,
+      0.25,
+      0.18,
+      0.07
+    ],
+    "score": 0,
+    "netGain": 0,
+    "missed": 0,
+    "churn": 0
+  },
+  "best": {
+    "vector": [
+      0.4,
+      -0.2,
+      0.2,
+      0.2,
+      0.02
+    ],
+    "score": 0,
+    "netGain": 0,
+    "missed": 0,
+    "churn": 0
+  },
+  "improvementPct": 0,
+  "signalsDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "improvementAccepted": false
+}
