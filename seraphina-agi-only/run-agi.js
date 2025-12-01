@@ -16,6 +16,7 @@ const ROOT = __dirname;
 const ENGINE_PATH = path.join(__dirname, 'advanced-language-engine.js');
 const ORCH_PATH = path.join(__dirname, 'ai-learning-orchestrator.js');
 const AGI_OPT_PATH = path.join(__dirname, 'agi-self-optimizer.js');
+const QUANTUM_CORE_PATH = path.join(__dirname, 'linux-octabit-quantum-core.js');
 
 function safeRequire(p){ try { return require(p); } catch(e){ return null; } }
 
@@ -69,6 +70,16 @@ async function runOptimize(){
   }catch(e){ console.error('AGI optimizer error:', e.message); process.exit(6); }
 }
 
+async function runQuantum(){
+  const QuantumCore = safeRequire(QUANTUM_CORE_PATH);
+  if(!QuantumCore){ console.error('Linux OctaBit Quantum Core not found.'); process.exit(7); }
+  try{
+    const core = new QuantumCore();
+    const result = core.run();
+    console.log('[Seraphina AGI] Quantum Core operational result:', JSON.stringify(result, null, 2));
+  }catch(e){ console.error('Quantum core error:', e.message); process.exit(8); }
+}
+
 async function main(argv){
   const cmd = argv[2] || 'help';
   if(cmd === 'help'){
@@ -76,6 +87,7 @@ async function main(argv){
     console.log('  serve [port]   Start HTTP API (POST /process)');
     console.log('  train          Run ai-learning-orchestrator.orchestrate() (if present)');
     console.log('  optimize       Run AGI self-optimizer (safe mock cube)');
+    console.log('  quantum        Run Linux OctaBit Quantum Core');
     return;
   }
   if(cmd === 'serve'){
@@ -89,9 +101,12 @@ async function main(argv){
   if(cmd === 'optimize'){
     await runOptimize(); return;
   }
+  if(cmd === 'quantum'){
+    await runQuantum(); return;
+  }
   console.error('Unknown command:', cmd); process.exit(1);
 }
 
 if(require.main === module){ main(process.argv).catch(e=>{ console.error(e); process.exit(1); }); }
 
-module.exports = { serve, runTrain, runOptimize };
+module.exports = { serve, runTrain, runOptimize, runQuantum };
