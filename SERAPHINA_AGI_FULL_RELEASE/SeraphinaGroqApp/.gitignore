@@ -1,0 +1,12 @@
+.env*
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+installer/Output/
+persistent_data/
+*.log
+.DS_Store
+Thumbs.db
