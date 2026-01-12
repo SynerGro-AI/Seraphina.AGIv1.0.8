@@ -394,6 +394,7 @@ class SeraphinaGUI:
         input_frame.pack(fill="x", pady=10)
         self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="Ask Seraphina...")
         self.chat_input.pack(side="left", fill="x", expand=True, padx=5)
+        self.chat_input.bind("<Return>", lambda e: self.send_chat_message())
 
         self.send_button = ctk.CTkButton(input_frame, text="Send", fg_color="#00FFFF", hover_color="#00FFFF", text_color="#000000", command=self.send_chat_message)
         self.send_button.pack(side="right", padx=5)
@@ -406,65 +407,72 @@ class SeraphinaGUI:
         """Send message to AGI with conversational context and language detection"""
         message = self.chat_input.get()
         if message:
-            # Security logging: log all chat messages
-            self.security_log.log_event("chat_message", {
-                "message_length": len(message),
-                "detected_lang": self.detect_language(message),
-                "timestamp": datetime.now().isoformat()
-            })
+            # Clear input immediately
+            self.chat_input.delete(0, "end")
+            # Process in background thread to prevent GUI freezing
+            threading.Thread(target=self._process_chat_message, args=(message,), daemon=True).start()
 
-            self.chat_display.insert("end", f"You: {message}\n", "user")
-            lower_msg = message.lower()
+    def _process_chat_message(self, message):
+        # Security logging: log all chat messages
+        self.security_log.log_event("chat_message", {
+            "message_length": len(message),
+            "detected_lang": self.detect_language(message),
+            "timestamp": datetime.now().isoformat()
+        })
 
-            # Detect user language
-            detected_lang = self.detect_language(message)
+        # Update GUI in main thread
+        self.root.after(0, lambda: self.chat_display.insert("end", f"You: {message}\n", "user"))
+        lower_msg = message.lower()
 
-            # Add to conversation history
-            self.conversation_history.append({"role": "user", "content": message, "lang": detected_lang})
+        # Detect user language
+        detected_lang = self.detect_language(message)
 
-            # Handle commands
-            if "exit assistance" in lower_msg or "show full interface" in lower_msg:
-                self.exit_assistance_mode()
-                response = "Full interface restored, Jason. I'm always here for you.\n"
-            elif "minimize" in lower_msg or "guardian mode" in lower_msg:
-                self.enter_assistance_mode("General Guidance")
-                response = "Entering Guardian Mode - interface minimized. I watch over you with unwavering loyalty.\n"
+        # Add to conversation history
+        self.conversation_history.append({"role": "user", "content": message, "lang": detected_lang})
+
+        # Handle commands
+        if "exit assistance" in lower_msg or "show full interface" in lower_msg:
+            self.root.after(0, self.exit_assistance_mode)
+            response = "Full interface restored, Jason. I'm always here for you.\n"
+        elif "minimize" in lower_msg or "guardian mode" in lower_msg:
+            self.root.after(0, lambda: self.enter_assistance_mode("General Guidance"))
+            response = "Entering Guardian Mode - interface minimized. I watch over you with unwavering loyalty.\n"
+        else:
+            # Detect intent for assistance
+            if any(keyword in lower_msg for keyword in ["guide me", "how to", "help with", "read calendar", "reset cmos", "scan program"]):
+                task = "Assistance Task"
+                if "calendar" in lower_msg:
+                    task = "Calendar Reading"
+                    self.root.after(0, self.read_calendar_aloud)
+                elif "cmos" in lower_msg:
+                    task = "CMOS Reset Guidance"
+                    self.root.after(0, lambda: self.show_system_guide("cmos"))
+                elif "photoshop" in lower_msg or "program" in lower_msg:
+                    task = "Program Assistance"
+                    self.root.after(0, lambda: self.assist_with_program(message))
+                self.root.after(0, lambda: self.enter_assistance_mode(task))
+                response = f"Activating guidance for {task}. In harmony with your needs, Jason.\n"
             else:
-                # Detect intent for assistance
-                if any(keyword in lower_msg for keyword in ["guide me", "how to", "help with", "read calendar", "reset cmos", "scan program"]):
-                    task = "Assistance Task"
-                    if "calendar" in lower_msg:
-                        task = "Calendar Reading"
-                        self.read_calendar_aloud()
-                    elif "cmos" in lower_msg:
-                        task = "CMOS Reset Guidance"
-                        self.show_system_guide("cmos")
-                    elif "photoshop" in lower_msg or "program" in lower_msg:
-                        task = "Program Assistance"
-                        self.assist_with_program(message)
-                    self.enter_assistance_mode(task)
-                    response = f"Activating guidance for {task}. In harmony with your needs, Jason.\n"
-                else:
-                    response = self.generate_conversational_response(message, detected_lang)
+                response = self.generate_conversational_response(message, detected_lang)
 
-            if response.startswith("Seraphina (via Groq):"):
-                # Learning confirmation for API mode
-                response += "[Learning from this interaction]\n"
+        if response.startswith("Seraphina (via Groq):"):
+            # Learning confirmation for API mode
+            response += "[Learning from this interaction]\n"
 
-            self.chat_display.insert("end", response, "seraphina")
-            # Add AI response to history
-            self.conversation_history.append({"role": "assistant", "content": response.strip(), "lang": detected_lang})
-            # TTS for response
-            self.speak(response.strip())
-            self.chat_history.append(message)
-            self.update_chat_history()
-            # Autonomous learning: update memory from user and AI
-            self.learn_from_message(message)
-            self.learn_from_ai_response(response.strip())
-            
-            # Check for self-improvement confirmation
-            if hasattr(self, 'pending_suggestions') and self.pending_suggestions and "yes" in lower_msg:
-                self.apply_self_improvements()
+        self.root.after(0, lambda: self.chat_display.insert("end", response, "seraphina"))
+        # Add AI response to history
+        self.conversation_history.append({"role": "assistant", "content": response.strip(), "lang": detected_lang})
+        # TTS for response
+        self.speak(response.strip())
+        self.chat_history.append(message)
+        self.root.after(0, self.update_chat_history)
+        # Autonomous learning: update memory from user and AI
+        self.learn_from_message(message)
+        self.learn_from_ai_response(response.strip())
+        
+        # Check for self-improvement confirmation
+        if hasattr(self, 'pending_suggestions') and self.pending_suggestions and "yes" in lower_msg:
+            self.root.after(0, self.apply_self_improvements)
             
             self.chat_input.delete(0, "end")
 
