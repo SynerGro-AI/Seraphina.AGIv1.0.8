@@ -1,3 +1,57 @@
+Metadata-Version: 2.4
+Name: glyph-language-engine
+Version: 8.7.0
+Summary: Advanced language engine with Hebrew Gematria, binary processing, and geometric transformations
+Home-page: https://github.com/seraphina-agi/glyph-language-engine
+Author: Seraphina AGI
+Author-email: seraphina@agi.engine
+Project-URL: Bug Reports, https://github.com/seraphina-agi/glyph-language-engine/issues
+Project-URL: Source, https://github.com/seraphina-agi/glyph-language-engine
+Project-URL: Documentation, https://github.com/seraphina-agi/glyph-language-engine#readme
+Keywords: ai language-engine gematria cryptography geometry resonance
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: plotly>=5.0.0
+Requires-Dist: gradio>=4.0.0
+Requires-Dist: shlex
+Requires-Dist: wasmtime>=12.0.0
+Requires-Dist: pytest>=7.0.0
+Requires-Dist: black>=22.0.0
+Requires-Dist: mypy>=1.0.0
+Provides-Extra: wasm
+Requires-Dist: wasmtime>=12.0.0; extra == "wasm"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Provides-Extra: dashboard
+Requires-Dist: gradio>=4.0.0; extra == "dashboard"
+Requires-Dist: plotly>=5.0.0; extra == "dashboard"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
 # Seraphina AGI Only
 
 This folder contains only AGI-related components from the Seraphina project, with no mining or wallet code.

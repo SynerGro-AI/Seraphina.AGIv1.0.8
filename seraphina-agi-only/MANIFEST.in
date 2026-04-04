@@ -1,0 +1,35 @@
+# Glyph Language Engine v8.7 - Release Manifest
+# Justice & Mercy Anchor + 16D Binary/Float Hyper-Wheel
+
+# Include Python package files
+include glyph_engine/*.py
+
+# Include JavaScript engine (required for Python bridge)
+include advanced-language-engine.js
+
+# Include dashboard updates
+include dashboard_updates_v8.7.py
+
+# Include documentation
+include README.md
+
+# Include configuration and build files
+include requirements.txt
+include setup.py
+
+# Include benchmark files
+include benchmark_v8.7.js
+include scaling_benchmark.js
+include realworld_benchmark.js
+
+# Include WASM compilation
+include glyph-wasm.ts
+include compile-wasm.bat
+
+# Exclude development files
+exclude *.pyc
+exclude __pycache__/
+exclude .git/
+exclude .gitignore
+exclude node_modules/
+exclude *.log

@@ -1,0 +1,15 @@
+# Glyph Language Engine v8.7 - Python Dependencies
+# Justice & Mercy Anchor + 16D Binary/Float Hyper-Wheel
+
+# Core dependencies
+plotly>=5.0.0
+gradio>=4.0.0
+shlex  # Built-in Python module, no installation needed
+
+# Optional WASM support
+wasmtime>=12.0.0  # Optional: for WebAssembly acceleration
+
+# Development dependencies (optional)
+pytest>=7.0.0      # For testing
+black>=22.0.0      # Code formatting
+mypy>=1.0.0        # Type checking
