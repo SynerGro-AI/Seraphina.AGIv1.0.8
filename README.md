@@ -8,6 +8,16 @@
 
 ## Install in 30 seconds
 
+Pick your favorite package manager — they all land you in the same place:
+
+| Channel | Command | Status |
+|---|---|---|
+| **pip** (any OS, Python 3.9+) | `pip install seraphina-agi` | shipping from source / wheel |
+| **WinGet** (Windows) | `winget install SynerGro.SeraphinaAGI` | manifests in [`dist/winget/`](dist/winget/), awaiting first GitHub Release before submission to `microsoft/winget-pkgs` |
+| **npm** (any OS w/ Node + Python) | `npm install -g seraphina-agi` | wrapper in [`npm/`](npm/), not yet published |
+| **curl \| bash** | see below | works today |
+| **iex \| irm** (PowerShell) | see below | works today |
+
 ### Linux / macOS / Git Bash on Windows
 
 ```bash
@@ -31,6 +41,36 @@ bash install.sh        # or: .\install.ps1
 Requires **Python 3.9+** and **git**. Installs into your user site by default
 (no admin needed). Set `SERAPHINA_SYSTEM_INSTALL=1` (or `-SystemInstall`) for a
 machine-wide install, or activate a venv first.
+
+### Optional extras
+
+```bash
+pip install "seraphina-agi[grok]"   # enables  seraphina -c "plan-grok ..."
+```
+
+The `[grok]` extra is opt-in. It uses stdlib `urllib` only (no real new
+dependency); the extras group exists so the install is **explicit consent**.
+You must set `SERAPHINA_GROK_API_KEY` before `plan-grok` will call xAI.
+
+## Build an AI in 60 seconds
+
+```powershell
+seraphina create-agent
+#   name (what do you call it?) [Aria]:   Aria
+#   purpose (one sentence) [...]:         a friendly Python tutor
+#   first memory (...):                   I was born on May 30 2026
+#   recall window (e.g. 7d, 30d, all):    30d
+#   voice style (calm/focused/...):       calm
+#   Triad consensus enabled? (y/n):       y
+
+seraphina -c "list agents"
+seraphina -c "agent aria hello, what should I learn first?"
+seraphina -c "agent aria recall born"
+```
+
+Agents live in `%USERPROFILE%\.seraphina\agents\<slug>.json` (or
+`$SERAPHINA_HOME` if set). The recall window (`7d`, `30d`, `12h`, `all`, ...)
+trims old memories automatically on each interaction.
 
 ## Quick Start (PowerShell, beginner-friendly)
 

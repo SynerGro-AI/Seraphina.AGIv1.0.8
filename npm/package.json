@@ -1,0 +1,32 @@
+{
+  "name": "seraphina-agi",
+  "version": "1.0.8",
+  "description": "Thin Node wrapper that shells out to the Python `seraphina` CLI (deterministic Roman Wheel Triad + Glyph wizard).",
+  "license": "MIT",
+  "homepage": "https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8.git"
+  },
+  "keywords": [
+    "agi",
+    "glyph",
+    "wasm",
+    "deterministic",
+    "roman-wheel",
+    "wrapper"
+  ],
+  "bin": {
+    "seraphina": "./bin/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node ./bin/postinstall.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ]
+}

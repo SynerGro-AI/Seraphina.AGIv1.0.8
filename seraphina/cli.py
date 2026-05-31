@@ -32,13 +32,16 @@ from .rule_base import OctaRuleBase
 
 # --- paths -------------------------------------------------------------------
 
-WIZARD_DIR = Path(os.environ.get("SERAPHINA_HOME", Path.home() / ".seraphina")) / "wizard"
+SERAPHINA_HOME = Path(os.environ.get("SERAPHINA_HOME", Path.home() / ".seraphina"))
+WIZARD_DIR = SERAPHINA_HOME / "wizard"
+AGENTS_DIR = SERAPHINA_HOME / "agents"
 MEMORY_FILE = WIZARD_DIR / "memory.jsonl"
 HISTORY_FILE = WIZARD_DIR / "history.jsonl"
 
 
 def _ensure_dirs() -> None:
     WIZARD_DIR.mkdir(parents=True, exist_ok=True)
+    AGENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _now() -> str:
@@ -76,6 +79,157 @@ def recall(query: str = "") -> None:
         return
     for rec in hits[-20:]:
         print(f"  {rec['ts']}  {rec['note']}")
+
+
+# --- agent builder ----------------------------------------------------------
+
+def _slug(name: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9_-]+", "_", name.strip()).strip("_")
+    return s.lower() or "agent"
+
+
+def _ask(prompt: str, default: str = "") -> str:
+    suffix = f" [{default}]" if default else ""
+    try:
+        ans = input(f"  {prompt}{suffix}: ").strip()
+    except EOFError:
+        ans = ""
+    return ans or default
+
+
+def _ask_int(prompt: str, default: int) -> int:
+    raw = _ask(prompt, str(default))
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"  (not a number, using {default})")
+        return default
+
+
+def create_agent(name: Optional[str] = None) -> int:
+    """Interactive wizard: name, purpose, first memory, recall window, etc."""
+    _ensure_dirs()
+    print()
+    print("  Let's build an AI. Press Enter to accept defaults.")
+    print()
+    name = name or _ask("name (what do you call it?)", "Aria")
+    slug = _slug(name)
+    purpose = _ask("purpose (one sentence)", "a helpful, deterministic assistant")
+    first_memory = _ask("first memory (something it should always remember)", "")
+    recall_window = _ask("recall window (e.g. 7d, 30d, all)", "30d")
+    voice = _ask("voice style (calm / focused / playful / serious)", "calm")
+    triad = _ask("Triad consensus enabled? (y/n)", "y").lower().startswith("y")
+
+    agent_path = AGENTS_DIR / f"{slug}.json"
+    if agent_path.exists():
+        ow = _ask(f"agent '{slug}' already exists - overwrite? (y/n)", "n").lower()
+        if not ow.startswith("y"):
+            print("  cancelled.")
+            return 1
+
+    record = {
+        "schema": 1,
+        "name": name,
+        "slug": slug,
+        "purpose": purpose,
+        "voice": voice,
+        "triad_consensus": triad,
+        "recall_window": recall_window,
+        "created": _now(),
+        "memories": [],
+    }
+    if first_memory:
+        record["memories"].append({"ts": _now(), "note": first_memory})
+
+    agent_path.write_text(json.dumps(record, indent=2, ensure_ascii=False),
+                          encoding="utf-8")
+    print()
+    print(f"  created agent: {name}  ({slug})")
+    print(f"  -> {agent_path}")
+    print(f"  use it:  seraphina -c \"agent {slug} hello\"")
+    print(f"  list:    seraphina -c \"list agents\"")
+    return 0
+
+
+def list_agents() -> int:
+    _ensure_dirs()
+    files = sorted(AGENTS_DIR.glob("*.json"))
+    if not files:
+        print("  no agents yet. create one:  seraphina create-agent")
+        return 0
+    print(f"  {len(files)} agent(s) in {AGENTS_DIR}:")
+    for p in files:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            print(f"    {data.get('slug', p.stem):<20}  "
+                  f"{data.get('name', '?'):<20}  {data.get('purpose', '')[:50]}")
+        except Exception as e:  # noqa: BLE001 - keep listing on bad file
+            print(f"    {p.stem}  (unreadable: {e!r})")
+    return 0
+
+
+def _parse_recall_window(window: str) -> Optional[float]:
+    """Return seconds, or None for 'all' / unparseable."""
+    w = (window or "").strip().lower()
+    if w in ("all", "forever", "", "*"):
+        return None
+    m = re.fullmatch(r"(\d+)\s*([smhdwy])", w)
+    if not m:
+        return None
+    n = int(m.group(1))
+    mult = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800, "y": 31536000}
+    return n * mult[m.group(2)]
+
+
+def agent_speak(slug: str, message: str) -> int:
+    """Append a message to an agent's memory, return a Triad-consensus reply."""
+    _ensure_dirs()
+    agent_path = AGENTS_DIR / f"{_slug(slug)}.json"
+    if not agent_path.exists():
+        print(f"  no such agent: {slug}.  create one:  seraphina create-agent")
+        return 1
+    data = json.loads(agent_path.read_text(encoding="utf-8"))
+    data.setdefault("memories", []).append({"ts": _now(), "note": message})
+
+    # Trim memory by recall_window
+    secs = _parse_recall_window(data.get("recall_window", "all"))
+    if secs is not None:
+        now_dt = datetime.now(timezone.utc)
+        keep = []
+        for m in data["memories"]:
+            try:
+                ts = datetime.fromisoformat(m["ts"])
+                if (now_dt - ts).total_seconds() <= secs:
+                    keep.append(m)
+            except Exception:
+                keep.append(m)
+        data["memories"] = keep
+
+    agent_path.write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                          encoding="utf-8")
+    print(f"  {data.get('name', slug)}: noted ({len(data['memories'])} memories kept)")
+
+    if data.get("triad_consensus", True):
+        triad(message)
+    return 0
+
+
+def agent_recall(slug: str, query: str = "") -> int:
+    agent_path = AGENTS_DIR / f"{_slug(slug)}.json"
+    if not agent_path.exists():
+        print(f"  no such agent: {slug}")
+        return 1
+    data = json.loads(agent_path.read_text(encoding="utf-8"))
+    mems = data.get("memories", [])
+    q = (query or "").lower()
+    hits = [m for m in mems if not q or q in m.get("note", "").lower()]
+    if not hits:
+        print(f"  ({data.get('name', slug)} has no matching memories)")
+        return 0
+    print(f"  {data.get('name', slug)} remembers ({len(hits)}):")
+    for m in hits[-20:]:
+        print(f"    {m['ts']}  {m['note']}")
+    return 0
 
 
 # --- glyph CLI bridge --------------------------------------------------------
@@ -125,6 +279,72 @@ def triad(message: str) -> None:
     print(f"  time:      {result['processing_time']}s")
 
 
+def plan_grok(message: str) -> None:
+    """Optional: ask xAI Grok for a planning pass. Requires SERAPHINA_GROK_API_KEY.
+
+    Uses stdlib urllib so no extra dependency is installed; the [grok]
+    extra in pyproject.toml exists only to signal explicit user opt-in.
+    """
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    key = os.environ.get("SERAPHINA_GROK_API_KEY", "").strip()
+    if not key:
+        print("  plan-grok: SERAPHINA_GROK_API_KEY is not set.")
+        print("  set it first:")
+        print("    PowerShell: $env:SERAPHINA_GROK_API_KEY = 'xai-...'")
+        print("    bash:       export SERAPHINA_GROK_API_KEY=xai-...")
+        print("  then retry:   seraphina -c \"plan-grok <your message>\"")
+        return
+
+    endpoint = os.environ.get("SERAPHINA_GROK_ENDPOINT",
+                              "https://api.x.ai/v1/chat/completions")
+    model = os.environ.get("SERAPHINA_GROK_MODEL", "grok-beta")
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system",
+             "content": "You are a planning assistant for Seraphina.AGI, a "
+                        "deterministic Roman Wheel Triad system. Produce a "
+                        "short, numbered build plan. No code execution."},
+            {"role": "user", "content": message},
+        ],
+        "temperature": 0.2,
+    }
+    req = urllib.request.Request(
+        endpoint,
+        data=_json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    print(f"  plan-grok -> {endpoint} (model={model})")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        print(f"  HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}")
+        return
+    except urllib.error.URLError as e:
+        print(f"  network error: {e.reason}")
+        return
+    except Exception as e:
+        print(f"  error: {e}")
+        return
+
+    try:
+        text = data["choices"][0]["message"]["content"]
+    except Exception:
+        print(f"  unexpected response shape: {str(data)[:400]}")
+        return
+    print("  --- grok plan ---")
+    for line in text.splitlines():
+        print(f"  {line}")
+
+
 # --- intent router ----------------------------------------------------------
 
 HELP_TEXT = """
@@ -141,9 +361,18 @@ Intents (natural phrasing works for most):
   doctor                     environment health check
   history [N]                last N gate-ledger entries
   bootstrap                  re-init the glyph environment
+
+  create-agent [name]        interactive: build a named AI (name, purpose,
+                             first memory, recall window, voice)
+  list agents                show created agents
+  agent <slug> <message>     send message; updates that agent's memory
+  agent <slug> recall [q]    search that agent's memories
+
   triad <message>            run a Roman Wheel Triad consensus pass
-  remember <text>            append note to memory
-  recall [query]             search memory (substring)
+  plan-grok <message>        optional: ask xAI Grok for a build plan
+                             (needs SERAPHINA_GROK_API_KEY)
+  remember <text>            append note to wizard memory
+  recall [query]             search wizard memory (substring)
   plan <text>                honest build plan, no execution
   dry on | dry off           toggle dry-run mode
   version | help | exit
@@ -191,7 +420,8 @@ _KNOWN_COMMANDS = (
     "help", "version", "exit", "dry on", "dry off",
     "build glyph", "forge", "list", "show", "run", "install",
     "uninstall", "pack", "doctor", "history", "bootstrap",
-    "triad", "remember", "recall", "plan",
+    "triad", "remember", "recall", "plan", "plan-grok",
+    "create-agent", "list agents", "agent",
 )
 
 
@@ -261,6 +491,32 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
     m = re.match(r"(?i)^\s*triad\s+(.+)$", raw)
     if m:
         triad(m.group(1).strip())
+        return False, dry_run
+
+    # --- optional Grok planner ---
+    m = re.match(r"(?i)^\s*(?:plan-grok|grok-plan|grok)\s+(.+)$", raw)
+    if m:
+        plan_grok(m.group(1).strip())
+        return False, dry_run
+
+    # --- agent builder ---
+    m = re.match(r"(?i)^\s*(?:create|new|build|make)[\s-]?agent(?:\s+(.+))?$", raw)
+    if m:
+        create_agent(m.group(1).strip() if m.group(1) else None)
+        return False, dry_run
+
+    if re.fullmatch(r"(?i)\s*(?:list|show)\s+agents?\s*", raw):
+        list_agents()
+        return False, dry_run
+
+    m = re.match(r"(?i)^\s*agent\s+(\S+)\s+recall(?:\s+(.+))?$", raw)
+    if m:
+        agent_recall(m.group(1), (m.group(2) or "").strip())
+        return False, dry_run
+
+    m = re.match(r"(?i)^\s*agent\s+(\S+)\s+(.+)$", raw)
+    if m:
+        agent_speak(m.group(1), m.group(2).strip())
         return False, dry_run
 
     # --- build glyph <N>  (tolerant: "build me a glyph for 179", "make glyph 100") ---
@@ -361,6 +617,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="plan only, do not invoke glyph")
     p.add_argument("-c", "--command", help="run a single intent and exit")
     p.add_argument("--version", action="store_true")
+    p.add_argument("rest", nargs=argparse.REMAINDER,
+                   help="optional positional intent, e.g. 'seraphina create-agent'")
     args = p.parse_args(argv)
 
     if args.version:
@@ -370,8 +628,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     _ensure_dirs()
 
     if args.command:
-        stop, _ = route(args.command, args.dry_run)
+        route(args.command, args.dry_run)
         return 0
+
+    # Direct subcommands: `seraphina create-agent`, `seraphina list-agents`, etc.
+    if args.rest:
+        intent = " ".join(args.rest).strip()
+        if intent:
+            route(intent, args.dry_run)
+            return 0
 
     print("")
     print("  Seraphina wizard - interactive Glyph shell")

@@ -20,6 +20,13 @@ classifiers = [
 # `pip install ./glyph` first, then `pip install .` for this package.
 dependencies = []
 
+[project.optional-dependencies]
+# Optional: enables `seraphina plan-grok "<message>"` via the xAI API.
+# Requires SERAPHINA_GROK_API_KEY in the environment. urllib.request is
+# stdlib so no real dependency is pulled; this group exists so users can
+# install with `pip install seraphina-agi[grok]` for explicit opt-in.
+grok = []
+
 [project.urls]
 Homepage = "https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8"
 
