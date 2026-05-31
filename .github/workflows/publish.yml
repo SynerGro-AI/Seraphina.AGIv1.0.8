@@ -27,14 +27,17 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build
 
-      - name: Build sdist + wheel
-        run: python -m build
+      - name: Build sdist + wheel (isolated output dir)
+        run: |
+          rm -rf dist-pypi
+          python -m build --outdir dist-pypi
+          ls -la dist-pypi/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: dist-pypi/
 
   publish:
     name: Publish to PyPI (Trusted Publisher / OIDC)
@@ -48,10 +51,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: dist-pypi/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-pypi/
         # Trusted Publisher: no username/password/token required.
         # Make sure PyPI project trusted-publisher config points to:
         #   owner/repo  : (this repo)
