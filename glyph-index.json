@@ -1,0 +1,15 @@
+{
+  "$schema": "https://glyph.gl/schemas/index-v1.json",
+  "description": "Official Glyph package index for the Seraphina.AGI ecosystem.",
+  "seraphina": {
+    "latest": "1.0.9",
+    "versions": {
+      "1.0.9": {
+        "url": "https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/releases/download/v1.0.9/seraphina-1.0.9.glyph",
+        "sha256": "d2c8001350697ab794b05cdea46ac2f4b5304f516b1ee2a53abae8b9314d46c0",
+        "size": 65792,
+        "description": "Seraphina.AGI - deterministic Roman Wheel Triad core"
+      }
+    }
+  }
+}

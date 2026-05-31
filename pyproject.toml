@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seraphina-agi"
-version = "1.0.8"
+version = "1.0.9"
 description = "Seraphina.AGI - deterministic Roman Wheel Triad core, binary-native glyph wizard"
 readme = "README.md"
 requires-python = ">=3.9"

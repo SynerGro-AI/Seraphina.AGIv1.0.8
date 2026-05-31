@@ -1,7 +1,7 @@
 """CLI entry point — `glyph <command>`. Mirrors pip's UX where sensible.
 
 Commands:
-    install <path.glyph> [--force]
+    install <path.glyph | url | name[==version]> [--force]
     uninstall <name> [--version V]
     list
     freeze
@@ -317,8 +317,32 @@ def _cmd_bootstrap(args) -> int:
 
 
 def _cmd_install(args) -> int:
+    from . import resolver as _resolver
+
+    arg = args.path
+    local_path: str
     try:
-        result = install(args.path, force=args.force)
+        if _resolver.is_url(arg):
+            print(f"  fetching {arg}")
+            local_path = str(_resolver.download(arg))
+            print(f"  downloaded -> {local_path}")
+        elif _resolver.is_local_path(arg):
+            local_path = arg
+        elif _resolver.is_bare_name(arg):
+            res = _resolver.resolve_name(arg)
+            label = f"{res.name}=={res.version}" if res.version else res.name
+            print(f"  resolved {label} -> {res.url}")
+            local_path = str(_resolver.download(res.url, expected_sha256=res.sha256))
+            print(f"  downloaded -> {local_path}")
+        else:
+            print(f"glyph: install target not found: {arg}", file=sys.stderr)
+            return 1
+    except _resolver.ResolverError as e:
+        print(f"glyph: install failed: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        result = install(local_path, force=args.force)
     except InstallError as e:
         print(f"glyph: install failed: {e}", file=sys.stderr)
         return 1
@@ -472,8 +496,10 @@ def build_parser() -> argparse.ArgumentParser:
     sb.add_argument("--root", default=None, help="override GLYPH_HOME root")
     sb.set_defaults(func=_cmd_bootstrap)
 
-    si = sub.add_parser("install", help="install a .glyph archive")
-    si.add_argument("path")
+    si = sub.add_parser("install",
+        help="install a .glyph archive (local path, http(s) URL, or name from the index)")
+    si.add_argument("path",
+        help="path to a .glyph file, an http(s) URL, or a name like 'seraphina' / 'seraphina==1.0.9'")
     si.add_argument("--force", action="store_true")
     si.set_defaults(func=_cmd_install)
 

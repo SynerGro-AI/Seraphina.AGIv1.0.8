@@ -1,8 +1,10 @@
-"""Glyph — Seraphina's package manager (v0.9).
+"""Glyph — Seraphina's package manager (v0.10).
 
 Native, self-bootstrapping alternative to pip for the Seraphina ecosystem.
+v0.10 adds remote install: `glyph install <url>` and `glyph install <name>`
+resolved against a JSON index.
 """
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 from .manifest import Manifest, ManifestError
 from .index import GlyphIndex

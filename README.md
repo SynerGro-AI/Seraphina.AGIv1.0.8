@@ -8,16 +8,46 @@
 
 ## Install in 30 seconds
 
-Pick your favorite package manager — they all land you in the same place:
+Pick your favorite package manager — they all land you in the same place.
+The four channels are **independent installs**, your choice:
 
-| Channel | Command | Status |
+| Channel | Command | What you get |
 |---|---|---|
-| **pip** (any OS, Python 3.9+) | `pip install seraphina-agi` | **live on PyPI** |
-| **macOS** (Intel + Apple Silicon) | `python3 -m pip install seraphina-agi` | **live on PyPI** |
-| **WinGet** (Windows) | `winget install SynerGro.SeraphinaAGI` | manifests in [`dist/winget/`](dist/winget/), awaiting submission to `microsoft/winget-pkgs` |
-| **npm** (any OS w/ Node + Python) | `npm install -g seraphina-agi` | wrapper in [`npm/`](npm/), not yet published |
-| **curl \| bash** | see below | works today |
-| **iex \| irm** (PowerShell) | see below | works today |
+| **pip** (any OS, Python 3.9+) | `pip install seraphina-agi` | `seraphina` + bundled `glyph` into your Python env (PyPI) |
+| **macOS** (Intel + Apple Silicon) | `python3 -m pip install seraphina-agi` | same as pip, verified on both arches |
+| **Glyph** (pure, no pip) | `glyph install seraphina` | downloads + verifies the signed `.glyph` archive into `$GLYPH_HOME` |
+| **WinGet** (Windows) | `winget install SynerGro.SeraphinaAGI` | system install via Microsoft's package manager |
+| **npm** (any OS w/ Node + Python) | `npm install -g seraphina-agi` | wrapper around the Python CLI |
+| **curl \| bash** | see below | one-shot bootstrap from source |
+| **iex \| irm** (PowerShell) | see below | one-shot bootstrap from source |
+
+### Pure Glyph install (no pip, no PyPI)
+
+Once you have the `glyph` runtime on PATH (v0.10+):
+
+```bash
+glyph install seraphina           # resolves the official index, verifies SHA256
+glyph list                        # seraphina  1.0.9
+```
+
+Pin a version or install from a URL / local file directly:
+
+```bash
+glyph install seraphina==1.0.9
+glyph install https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/releases/download/v1.0.9/seraphina-1.0.9.glyph
+glyph install ./dist/seraphina-1.0.9.glyph
+```
+
+Point Glyph at a different store (e.g. an external drive) with `GLYPH_HOME`,
+or at a private index with `GLYPH_INDEX_URL`:
+
+```bash
+$env:GLYPH_HOME = "F:\glyph-dataland"
+$env:GLYPH_INDEX_URL = "https://example.org/my-index.json"
+glyph install seraphina
+```
+
+The default index is committed in this repo at [`glyph-index.json`](glyph-index.json).
 
 ### macOS (Intel or Apple Silicon)
 
