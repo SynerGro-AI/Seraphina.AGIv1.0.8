@@ -349,42 +349,66 @@ def plan_grok(message: str) -> None:
 # --- intent router ----------------------------------------------------------
 
 HELP_TEXT = """
-Intents (natural phrasing works for most):
+Seraphina — Roman Wheel Language wizard
+========================================
+Natural phrasing works for most intents. Categories below.
 
+GLYPH PACKAGES (binary-native wasm)
+-----------------------------------
   build glyph <N>            forge a binary-native wasm glyph whose Rule-24
-                             value equals N        (e.g. "build glyph 179")
+                             value equals N           e.g. "build glyph 179"
   forge <name> [k=v ...]     explicit forge: sides=8 points=33 dots=1 ...
+  pack <dir>                 pack a source directory into a .glyph
+  install <name|url|path>    install from public index, URL, or local file
+                             e.g.  install seraphina
+                                   install https://example.com/foo.glyph
+                                   install ./foo.glyph
+  uninstall <name>           remove an installed glyph
   list                       list installed glyphs
   show <name>                manifest for an installed glyph
   run <name> [export=E n=K]  run an installed glyph
-  install <path.glyph>       install a packed .glyph
-  pack <dir>                 pack a source directory
-  doctor                     environment health check
   history [N]                last N gate-ledger entries
+  doctor                     environment health check
   bootstrap                  re-init the glyph environment
 
-  create-agent [name]        interactive: build a named AI (name, purpose,
-                             first memory, recall window, voice)
+ROMAN WHEEL LANGUAGE — byte tier (RWL1)
+---------------------------------------
+  rwl encode <src> [-o out]  wrap any source file in a deterministic .rwg
+                             binary (lossless, SHA256-verified)
+  rwl decode <rwg> [-o out]  unwrap a .rwg back to its original source
+  rwl info <rwg>             show .rwg header (language, sha256, sizes)
+  rwl wheel <rwg|file>       render bytes as Roman-Wheel symbols
+
+ROMAN WHEEL LANGUAGE — AST tier (RWAST v2, semantic)
+----------------------------------------------------
+  rwl translate <src> --to python|js|ts [-o out]
+                             cross-language translation via the RWAST
+                             universal IR. Auto-detects --from by extension.
+                               e.g. rwl translate app.py --to ts -o app.ts
+                                    rwl translate add.py --to js
+  (see README_RWAST.md for the full operator / builtin mapping table)
+
+AGENTS (named AI workspaces)
+----------------------------
+  create-agent [name]        interactive: name, purpose, first memory,
+                             recall window, voice
   list agents                show created agents
   agent <slug> <message>     send message; updates that agent's memory
   agent <slug> recall [q]    search that agent's memories
 
+CORE
+----
   triad <message>            run a Roman Wheel Triad consensus pass
-  rwl encode <src> [out]     wrap any source file in a deterministic .rwg
-                             binary (lossless round-trip; see seraphina.rwl)
-  rwl decode <rwg> [out]     unwrap a .rwg back to its original source
-  rwl info <rwg>             show .rwg header (language, sha256, sizes)
-  rwl wheel <rwg|file>       render bytes as Roman-Wheel symbols
   plan-grok <message>        optional: ask xAI Grok for a build plan
-                             (needs SERAPHINA_GROK_API_KEY)
-  remember <text>            append note to wizard memory
-  recall [query]             search wizard memory (substring)
+                             (needs SERAPHINA_GROK_API_KEY or XAI_API_KEY)
+  remember <text>            append a note to wizard memory
+  recall [query]             search wizard memory
   plan <text>                honest build plan, no execution
   dry on | dry off           toggle dry-run mode
   version | help | exit
 
-You can talk casually: "build me a glyph for 179", "show me wheel_one",
-"i want to run wheel_one", "what version" - all work.
+Casual phrasing works: "build me a glyph for 179", "show me wheel_one",
+"i want to run wheel_one", "what version" — all dispatch correctly.
 """.strip()
 
 
@@ -428,7 +452,8 @@ _KNOWN_COMMANDS = (
     "uninstall", "pack", "doctor", "history", "bootstrap",
     "triad", "remember", "recall", "plan", "plan-grok",
     "create-agent", "list agents", "agent",
-    "rwl encode", "rwl decode", "rwl info", "rwl wheel",
+    "rwl encode", "rwl decode", "rwl info", "rwl wheel", "rwl translate",
+    "transmute",
 )
 
 

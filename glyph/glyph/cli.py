@@ -484,6 +484,144 @@ def _cmd_pack(args) -> int:
     return 0
 
 
+# --- RWAST transmute / exec ------------------------------------------------
+
+# Map file extension -> RWAST language id
+_EXT_LANG = {
+    ".py": "python",
+    ".pyw": "python",
+    ".js": "js",
+    ".mjs": "js",
+    ".cjs": "js",
+    ".ts": "ts",
+    ".rwast": "rwast",
+    ".rwg": None,        # detect from container header
+}
+
+
+def _detect_lang_from_ext(path: str) -> str | None:
+    from pathlib import Path as _P
+    suffix = _P(path).suffix.lower()
+    return _EXT_LANG.get(suffix)
+
+
+def _cmd_transmute(args) -> int:
+    """Source -> RWAST binary -> target language.
+
+    glyph transmute <file> --to python|js|ts|rwast [-o out]
+    Auto-detects --from from file extension if not given.
+    --to rwast  freezes the AST to a SHA256-verified .rwast binary blob.
+    Input may be a .rwast/.rwg blob (then --to <lang> re-emits source).
+    """
+    from pathlib import Path as _P
+    try:
+        from seraphina.rwl.ast_ir import parse, emit, encode_ast, decode_ast
+    except ImportError:
+        print("glyph transmute: requires the seraphina package "
+              "(pip install seraphina-agi or pythonpath the repo)",
+              file=sys.stderr)
+        return 2
+
+    src = _P(args.path)
+    if not src.is_file():
+        print(f"glyph transmute: not found: {src}", file=sys.stderr)
+        return 1
+
+    from_lang = args.from_lang or _detect_lang_from_ext(str(src))
+    to_lang = args.to_lang
+
+    # Input is a sealed AST blob?
+    if src.suffix.lower() in (".rwast", ".rwg") or from_lang == "rwast":
+        try:
+            root = decode_ast(src.read_bytes())
+        except Exception as e:
+            print(f"glyph transmute: cannot decode {src}: {e}", file=sys.stderr)
+            return 1
+    else:
+        if not from_lang:
+            print(f"glyph transmute: cannot detect language from {src.name}; "
+                  f"pass --from python|js|ts", file=sys.stderr)
+            return 1
+        source_text = src.read_text(encoding="utf-8")
+        try:
+            root = parse(source_text, from_lang)
+        except Exception as e:
+            print(f"glyph transmute: parse error ({from_lang}): {e}",
+                  file=sys.stderr)
+            return 1
+
+    # --to rwast: freeze to binary AST blob
+    if to_lang in ("rwast", "glyph", "binary"):
+        blob = encode_ast(root)
+        out = _P(args.output) if args.output else src.with_suffix(".rwast")
+        out.write_bytes(blob)
+        print(f"glyph transmute: {src.name} -> {out.name} ({len(blob)} B, SHA256 sealed)")
+        return 0
+
+    # --to <source language>: emit source
+    if not to_lang:
+        print("glyph transmute: --to <python|js|ts|rwast> required",
+              file=sys.stderr)
+        return 1
+    try:
+        result = emit(root, to_lang)
+    except Exception as e:
+        print(f"glyph transmute: emit error ({to_lang}): {e}", file=sys.stderr)
+        return 1
+
+    if args.output:
+        _P(args.output).write_text(result, encoding="utf-8")
+        print(f"glyph transmute: {src.name} -> {args.output} "
+              f"({len(result)} chars, lang={to_lang})")
+    else:
+        sys.stdout.write(result)
+        if not result.endswith("\n"):
+            sys.stdout.write("\n")
+    return 0
+
+
+def _cmd_exec(args) -> int:
+    """Transmute a source file to Python and execute it in-process.
+
+    glyph exec <file.py|.rwast|.rwg>
+    """
+    from pathlib import Path as _P
+    try:
+        from seraphina.rwl.ast_ir import parse, emit, decode_ast
+    except ImportError:
+        print("glyph exec: requires the seraphina package", file=sys.stderr)
+        return 2
+
+    src = _P(args.path)
+    if not src.is_file():
+        print(f"glyph exec: not found: {src}", file=sys.stderr)
+        return 1
+
+    if src.suffix.lower() in (".rwast", ".rwg"):
+        root = decode_ast(src.read_bytes())
+        code_str = emit(root, "python")
+    else:
+        from_lang = _detect_lang_from_ext(str(src))
+        if not from_lang or from_lang not in ("python", "js", "ts"):
+            print(f"glyph exec: cannot run {src.suffix} (need .py/.rwast/.rwg)",
+                  file=sys.stderr)
+            return 1
+        source_text = src.read_text(encoding="utf-8")
+        root = parse(source_text, from_lang)
+        code_str = emit(root, "python")
+
+    namespace = {"__name__": "__main__", "__file__": str(src)}
+    try:
+        compiled = compile(code_str, str(src), "exec")
+        exec(compiled, namespace)   # noqa: S102  - intentional dynamic exec
+    except SystemExit as e:
+        return int(e.code) if isinstance(e.code, int) else 0
+    except Exception as e:
+        print(f"glyph exec: runtime error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="glyph",
@@ -568,6 +706,27 @@ def build_parser() -> argparse.ArgumentParser:
     sx.add_argument("--source", default=None,
                     help="also write package source tree to this directory")
     sx.set_defaults(func=_cmd_forge)
+
+    # --- transmute: cross-language translation via RWAST ----------------
+    st = sub.add_parser(
+        "transmute",
+        help="translate any source file across languages via the RWAST binary IR "
+             "(py <-> js <-> ts; --to rwast freezes to a sealed binary blob)")
+    st.add_argument("path", help="source file (.py / .js / .ts / .rwast / .rwg)")
+    st.add_argument("--to", dest="to_lang", required=True,
+                    help="target language: python | js | ts | rwast")
+    st.add_argument("--from", dest="from_lang", default=None,
+                    help="source language (auto-detected from extension if omitted)")
+    st.add_argument("-o", "--output", default=None,
+                    help="output file (default: stdout for source, <name>.rwast for binary)")
+    st.set_defaults(func=_cmd_transmute)
+
+    # --- exec: transmute to Python and run it in-process ----------------
+    se = sub.add_parser(
+        "exec",
+        help="transmute a source file (py/js/ts/.rwast/.rwg) to Python and execute it")
+    se.add_argument("path", help="source file to transmute and run")
+    se.set_defaults(func=_cmd_exec)
 
     sra = sub.add_parser("remote-add",
         help="register a remote host endpoint in $GLYPH_HOME/remotes.json")
