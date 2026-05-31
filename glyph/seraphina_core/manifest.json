@@ -1,0 +1,15 @@
+{
+  "schema": 3,
+  "name": "seraphina_core",
+  "version": "1.0.0",
+  "entrypoint": "code/main.py",
+  "sha256": "",
+  "dependencies": [],
+  "cost_estimate": 0.2,
+  "risk_level": "low",
+  "glyph_type": "core",
+  "runtime": "python",
+  "requires_glyph": ">=0.5.0",
+  "environment": "seraphina",
+  "description": "Native Consensus Triad - binary-first Roman Wheel engine"
+}

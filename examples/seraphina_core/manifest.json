@@ -1,0 +1,15 @@
+{
+  "name": "seraphina_core",
+  "version": "1.0.0",
+  "description": "Seraphina core OctaLang glyph - Triad wheels, Fibonacci-binary, Rule-24 emitters",
+  "runtime": "octalang",
+  "entrypoint": "code/main.GL",
+  "glyph_type": "core",
+  "environment": "seraphina",
+  "requires_glyph": ">=0.9.0",
+  "risk_level": "low",
+  "cost_estimate": 0.0,
+  "dependencies": [],
+  "geometry_refs": [],
+  "emotion": {}
+}

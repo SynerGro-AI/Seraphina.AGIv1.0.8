@@ -1,0 +1,15 @@
+{
+  "name": "wheel_one",
+  "version": "1.0.0",
+  "description": "Rule-24 binary-native glyph (value=179): sides=8 points=33 dots=1 intersections=1 spirals=8",
+  "runtime": "wasm",
+  "entrypoint": "code/main.wasm",
+  "glyph_type": "native",
+  "environment": "seraphina",
+  "requires_glyph": ">=0.9.0",
+  "risk_level": "low",
+  "cost_estimate": 0.0,
+  "dependencies": [],
+  "geometry_refs": [],
+  "emotion": {}
+}

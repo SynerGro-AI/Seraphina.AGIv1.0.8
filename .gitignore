@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.venv/
+venv/
+
+# Glyph runtime data
+.glyph_home/
+*.glyph
+!prebuilt/*.glyph
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs / scratch
+*.log
+*.tmp
