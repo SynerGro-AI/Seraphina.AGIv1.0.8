@@ -12,11 +12,37 @@ Pick your favorite package manager — they all land you in the same place:
 
 | Channel | Command | Status |
 |---|---|---|
-| **pip** (any OS, Python 3.9+) | `pip install seraphina-agi` | shipping from source / wheel |
-| **WinGet** (Windows) | `winget install SynerGro.SeraphinaAGI` | manifests in [`dist/winget/`](dist/winget/), awaiting first GitHub Release before submission to `microsoft/winget-pkgs` |
+| **pip** (any OS, Python 3.9+) | `pip install seraphina-agi` | **live on PyPI** |
+| **macOS** (Intel + Apple Silicon) | `python3 -m pip install seraphina-agi` | **live on PyPI** |
+| **WinGet** (Windows) | `winget install SynerGro.SeraphinaAGI` | manifests in [`dist/winget/`](dist/winget/), awaiting submission to `microsoft/winget-pkgs` |
 | **npm** (any OS w/ Node + Python) | `npm install -g seraphina-agi` | wrapper in [`npm/`](npm/), not yet published |
 | **curl \| bash** | see below | works today |
 | **iex \| irm** (PowerShell) | see below | works today |
+
+### macOS (Intel or Apple Silicon)
+
+```bash
+# quickest path — uses system or Homebrew Python 3.9+
+python3 -m pip install seraphina-agi
+seraphina --version
+seraphina create-agent
+
+# recommended: isolated venv
+python3 -m venv ~/.seraphina-venv
+source ~/.seraphina-venv/bin/activate
+pip install --upgrade pip
+pip install seraphina-agi
+
+# Homebrew users who don't have Python yet:
+brew install python
+python3 -m pip install --user seraphina-agi
+# if `seraphina` is not on PATH, add the user-scripts dir to your shell:
+echo 'export PATH="$HOME/Library/Python/3.13/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+No compilers, no native deps — pure stdlib, installs in seconds on both
+architectures.
 
 ### Linux / macOS / Git Bash on Windows
 
