@@ -108,6 +108,60 @@ The `[grok]` extra is opt-in. It uses stdlib `urllib` only (no real new
 dependency); the extras group exists so the install is **explicit consent**.
 You must set `SERAPHINA_GROK_API_KEY` before `plan-grok` will call xAI.
 
+## Roman Wheel Language (RWL) — universal binary carrier
+
+RWL wraps any source file in a deterministic 64-byte signed envelope so
+code can travel, be verified, and stored uniformly across the Glyph
+ecosystem regardless of its source language.
+
+**v1 promise:** lossless per-language round-trip (SHA256-verified). Every
+byte renders as a 5-tuple Roman-Wheel symbol `(sides, points, dots,
+intersections, spirals)`.
+
+**Supported languages:** Python, JavaScript/TypeScript, Markdown, JSON,
+HTML, CSS, Shell, and Seraphina's own `.GL`.
+
+```bash
+# Encode — any source file → deterministic .rwg binary
+seraphina rwl encode myapp.py
+seraphina rwl encode README.md out.rwg
+
+# Inspect header without decoding
+seraphina rwl info out.rwg
+#  language   : markdown
+#  original   : 8812 bytes
+#  sha256     : a7b6930c...
+
+# Decode back to identical source (SHA256 auto-verified)
+seraphina rwl decode out.rwg restored.md
+
+# Render bytes as Roman-Wheel symbols
+seraphina rwl wheel out.rwg width=12 limit=72
+#  02011 02000 11011 12021 13010 12001 13000 12100 ...
+```
+
+A `.rwg` file is **not** a translation — it is a carrier. Moving code
+between languages requires the semantic AST-IR tier (future work). What
+it *does* give you today:
+
+- One universal binary envelope for Python, JS, text, or any supported language
+- Deterministic SHA256 gate on every decode (tamper-evident)
+- Symbolic wheel view of any byte stream (geometry over bits)
+- Point `GLYPH_INDEX_URL` at a private registry to carry proprietary code
+  through the same pipeline as open-source
+
+**Pure API (no CLI required):**
+
+```python
+from seraphina.rwl import encode, decode, render_wheel_stream
+
+source = open("myapp.py", "rb").read()
+blob   = encode(source, language="python")            # .rwg bytes
+container, restored = decode(blob)                    # verify + unwrap
+assert restored == source                             # guaranteed
+print(render_wheel_stream(source[:32], width=8))      # wheel view
+```
+
 ## Build an AI in 60 seconds
 
 ```powershell

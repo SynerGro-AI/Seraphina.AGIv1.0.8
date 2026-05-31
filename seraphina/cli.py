@@ -369,6 +369,11 @@ Intents (natural phrasing works for most):
   agent <slug> recall [q]    search that agent's memories
 
   triad <message>            run a Roman Wheel Triad consensus pass
+  rwl encode <src> [out]     wrap any source file in a deterministic .rwg
+                             binary (lossless round-trip; see seraphina.rwl)
+  rwl decode <rwg> [out]     unwrap a .rwg back to its original source
+  rwl info <rwg>             show .rwg header (language, sha256, sizes)
+  rwl wheel <rwg|file>       render bytes as Roman-Wheel symbols
   plan-grok <message>        optional: ask xAI Grok for a build plan
                              (needs SERAPHINA_GROK_API_KEY)
   remember <text>            append note to wizard memory
@@ -422,7 +427,150 @@ _KNOWN_COMMANDS = (
     "uninstall", "pack", "doctor", "history", "bootstrap",
     "triad", "remember", "recall", "plan", "plan-grok",
     "create-agent", "list agents", "agent",
+    "rwl encode", "rwl decode", "rwl info", "rwl wheel",
 )
+
+
+# --- rwl handlers ----------------------------------------------------------
+
+def _rwl_parse_named(args: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Split positional args from k=v / --k v options."""
+    pos: list[str] = []
+    kw: dict[str, str] = {}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("--") and i + 1 < len(args):
+            kw[a[2:]] = args[i + 1]
+            i += 2
+            continue
+        if "=" in a and not a.startswith("/") and not a.startswith("\\"):
+            k, _, v = a.partition("=")
+            kw[k] = v
+        else:
+            pos.append(a)
+        i += 1
+    return pos, kw
+
+
+def rwl_encode(args: list[str]) -> None:
+    from pathlib import Path as _P
+    from .rwl import encode as _enc, info as _info, RWLError as _Err
+    from .rwl.codec import _resolve_language as _resolve, _ext_for as _ext  # type: ignore
+    pos, kw = _rwl_parse_named(args)
+    if not pos:
+        print("  usage: rwl encode <src> [out.rwg] [lang=auto|python|js|...] [compress=on|off]")
+        return
+    src = _P(pos[0])
+    if not src.is_file():
+        print(f"  rwl: not found: {src}")
+        return
+    out = _P(pos[1]) if len(pos) >= 2 else src.with_suffix(src.suffix + ".rwg")
+    lang_arg = kw.get("lang", kw.get("language", "auto"))
+    try:
+        lang = _resolve(None if lang_arg == "auto" else lang_arg, src)
+    except _Err as e:
+        print(f"  rwl: {e}")
+        return
+    compress = None
+    if "compress" in kw:
+        compress = kw["compress"].lower() in ("1", "true", "on", "yes")
+    source = src.read_bytes()
+    blob = _enc(source, language=lang, compress=compress)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(blob)
+    container = _info(blob)
+    print(f"  encoded: {src}  ({container.original_size} B)")
+    print(f"  -> {out}  ({len(blob)} B, lang={container.language}, "
+          f"compressed={container.compressed})")
+    print(f"  sha256(src): {container.sha256_hex}")
+
+
+def rwl_decode(args: list[str]) -> None:
+    from pathlib import Path as _P
+    from .rwl import decode as _dec, RWLError as _Err
+    from .rwl.codec import _ext_for as _ext  # type: ignore
+    pos, _kw = _rwl_parse_named(args)
+    if not pos:
+        print("  usage: rwl decode <file.rwg> [out_path]")
+        return
+    src = _P(pos[0])
+    if not src.is_file():
+        print(f"  rwl: not found: {src}")
+        return
+    try:
+        container, source = _dec(src.read_bytes())
+    except _Err as e:
+        print(f"  rwl: decode failed: {e}")
+        return
+    if len(pos) >= 2:
+        out = _P(pos[1])
+    else:
+        base = src.name
+        if base.endswith(".rwg"):
+            base = base[:-4]
+        if "." not in base:
+            base = f"{base}.{_ext(container.language)}"
+        out = src.with_name(base)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(source)
+    print(f"  decoded: {src}")
+    print(f"  -> {out}  ({container.original_size} B, lang={container.language})")
+    print(f"  sha256 verified: {container.sha256_hex}")
+
+
+def rwl_info(args: list[str]) -> None:
+    from pathlib import Path as _P
+    from .rwl import info as _info, RWLError as _Err
+    pos, _kw = _rwl_parse_named(args)
+    if not pos:
+        print("  usage: rwl info <file.rwg>")
+        return
+    src = _P(pos[0])
+    if not src.is_file():
+        print(f"  rwl: not found: {src}")
+        return
+    try:
+        c = _info(src.read_bytes())
+    except _Err as e:
+        print(f"  rwl: {e}")
+        return
+    print(f"  file       : {src}")
+    print(f"  rwl version: {c.version}")
+    print(f"  language   : {c.language}")
+    print(f"  original   : {c.original_size} bytes")
+    print(f"  payload    : {c.payload_size} bytes  (compressed={c.compressed})")
+    print(f"  sha256     : {c.sha256_hex}")
+
+
+def rwl_wheel(args: list[str]) -> None:
+    from pathlib import Path as _P
+    from .rwl import decode as _dec, render_wheel_stream as _render, RWLError as _Err
+    pos, kw = _rwl_parse_named(args)
+    if not pos:
+        print("  usage: rwl wheel <file.rwg | any file> [width=16] [limit=256]")
+        return
+    src = _P(pos[0])
+    if not src.is_file():
+        print(f"  rwl: not found: {src}")
+        return
+    raw = src.read_bytes()
+    # If it's an .rwg, render the *decoded source* bytes; else render raw bytes.
+    if src.suffix.lower() == ".rwg":
+        try:
+            c, raw = _dec(raw)
+            print(f"  wheel view of {src.name}  (lang={c.language}, {c.original_size} B)")
+        except _Err as e:
+            print(f"  rwl: {e}")
+            return
+    else:
+        print(f"  wheel view of {src.name}  ({len(raw)} B)")
+    width = int(kw.get("width", "16"))
+    limit = int(kw.get("limit", "256"))
+    sample = raw[:limit]
+    print(_render(sample, width=width))
+    if len(raw) > limit:
+        print(f"  ... {len(raw) - limit} more bytes ({len(raw)} total)")
 
 
 def _normalize(text: str) -> str:
@@ -597,6 +745,22 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         print("    3. install the packed .glyph files")
         print("    4. compose them with `run` and verify under Triad consensus")
         print("  (no execution - real implementation requires concrete numeric targets.)")
+        return False, dry_run
+
+    # --- rwl: Roman Wheel Language codec -----------------------------------
+    m = re.match(r"(?i)^\s*rwl\s+(encode|decode|info|wheel)\b(.*)$", raw)
+    if m:
+        action = m.group(1).lower()
+        rest = m.group(2).strip()
+        args = rest.split() if rest else []
+        if action == "encode":
+            rwl_encode(args)
+        elif action == "decode":
+            rwl_decode(args)
+        elif action == "info":
+            rwl_info(args)
+        elif action == "wheel":
+            rwl_wheel(args)
         return False, dry_run
 
     # --- final fallback: suggest the closest known command ---

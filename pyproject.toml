@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seraphina-agi"
-version = "1.0.9"
+version = "1.0.10"
 description = "Seraphina.AGI - deterministic Roman Wheel Triad core, binary-native glyph wizard"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -38,12 +38,13 @@ glyph = "glyph.cli:main"
 # Bundle the sister `glyph` package into the same wheel so a single
 # `pip install seraphina-agi` installs both `import seraphina` and
 # `import glyph` (and both console scripts).
-packages = ["seraphina", "seraphina.lib", "glyph"]
+packages = ["seraphina", "seraphina.lib", "seraphina.rwl", "glyph"]
 include-package-data = true
 
 [tool.setuptools.package-dir]
 seraphina = "seraphina"
 "seraphina.lib" = "seraphina/lib"
+"seraphina.rwl" = "seraphina/rwl"
 glyph = "glyph/glyph"
 
 [tool.setuptools.package-data]
