@@ -47,6 +47,7 @@ SUPPORTED_LANGUAGES: list[Tuple[str, str, bool]] = [
     ("css",        "css",  True),   # 7
     ("shell",      "sh",   True),   # 8
     ("gl",         "gl",   True),   # 9  - Seraphina's native .GL
+    ("rwast",      "rwast", True),  # 10 - Roman Wheel AST binary IR
 ]
 
 _LANG_TO_ID = {name: i for i, (name, _, _) in enumerate(SUPPORTED_LANGUAGES)}

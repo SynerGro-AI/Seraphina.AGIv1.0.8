@@ -32,6 +32,8 @@ from .codec import (
     SUPPORTED_LANGUAGES,
 )
 from .wheel import byte_to_symbol, symbol_to_byte, render_wheel_stream
+from . import ast_ir
+from .ast_ir import translate, parse, emit
 
 __all__ = [
     "encode",
@@ -43,4 +45,8 @@ __all__ = [
     "byte_to_symbol",
     "symbol_to_byte",
     "render_wheel_stream",
+    "ast_ir",
+    "translate",
+    "parse",
+    "emit",
 ]

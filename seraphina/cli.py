@@ -289,9 +289,10 @@ def plan_grok(message: str) -> None:
     import urllib.request
     import urllib.error
 
-    key = os.environ.get("SERAPHINA_GROK_API_KEY", "").strip()
+    key = (os.environ.get("SERAPHINA_GROK_API_KEY", "")
+           or os.environ.get("XAI_API_KEY", "")).strip()
     if not key:
-        print("  plan-grok: SERAPHINA_GROK_API_KEY is not set.")
+        print("  plan-grok: no API key found (checked SERAPHINA_GROK_API_KEY, XAI_API_KEY).")
         print("  set it first:")
         print("    PowerShell: $env:SERAPHINA_GROK_API_KEY = 'xai-...'")
         print("    bash:       export SERAPHINA_GROK_API_KEY=xai-...")
@@ -300,7 +301,7 @@ def plan_grok(message: str) -> None:
 
     endpoint = os.environ.get("SERAPHINA_GROK_ENDPOINT",
                               "https://api.x.ai/v1/chat/completions")
-    model = os.environ.get("SERAPHINA_GROK_MODEL", "grok-beta")
+    model = os.environ.get("SERAPHINA_GROK_MODEL", "grok-4-latest")
     payload = {
         "model": model,
         "messages": [
@@ -573,6 +574,37 @@ def rwl_wheel(args: list[str]) -> None:
         print(f"  ... {len(raw) - limit} more bytes ({len(raw)} total)")
 
 
+def rwl_translate(args: list[str]) -> None:
+    """rwl translate <src_file> --from py|js|ts --to py|js|ts [-o out]"""
+    from pathlib import Path as _P
+    from .rwl.ast_ir import translate as _translate
+    pos, kw = _rwl_parse_named(args)
+    if not pos:
+        print("  usage: rwl translate <file> --from python --to js|ts|python [-o out]")
+        return
+    src = _P(pos[0])
+    if not src.is_file():
+        print(f"  rwl: not found: {src}")
+        return
+    from_lang = kw.get("from", None) or (src.suffix.lstrip(".") or "python")
+    to_lang = kw.get("to", None)
+    if not to_lang:
+        print("  rwl translate: --to <language> required  (python | js | ts)")
+        return
+    source = src.read_text(encoding="utf-8")
+    try:
+        result = _translate(source, from_lang, to_lang)
+    except Exception as exc:
+        print(f"  rwl translate error: {exc}")
+        return
+    out_path = kw.get("o", None) or kw.get("out", None)
+    if out_path:
+        _P(out_path).write_text(result, encoding="utf-8")
+        print(f"  rwl: wrote {len(result)} chars → {out_path}")
+    else:
+        print(result)
+
+
 def _normalize(text: str) -> str:
     """Lowercase, collapse whitespace, drop common filler words, expand verbs."""
     s = text.lower().strip()
@@ -748,7 +780,7 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         return False, dry_run
 
     # --- rwl: Roman Wheel Language codec -----------------------------------
-    m = re.match(r"(?i)^\s*rwl\s+(encode|decode|info|wheel)\b(.*)$", raw)
+    m = re.match(r"(?i)^\s*rwl\s+(encode|decode|info|wheel|translate)\b(.*)$", raw)
     if m:
         action = m.group(1).lower()
         rest = m.group(2).strip()
@@ -761,6 +793,8 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
             rwl_info(args)
         elif action == "wheel":
             rwl_wheel(args)
+        elif action == "translate":
+            rwl_translate(args)
         return False, dry_run
 
     # --- final fallback: suggest the closest known command ---
