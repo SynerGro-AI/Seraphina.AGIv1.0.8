@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: SynerGro.SeraphinaAGI
+PackageVersion: 1.0.8
+PackageLocale: en-US
+Publisher: SynerGro
+PublisherUrl: https://github.com/SynerGro-AI
+PublisherSupportUrl: https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/issues
+Author: Jason Wilson
+PackageName: Seraphina.AGI
+PackageUrl: https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8
+License: MIT
+LicenseUrl: https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/blob/main/LICENSE
+Copyright: Copyright (c) 2026 Jason Wilson
+ShortDescription: Deterministic Roman Wheel Triad core + binary-native glyph wizard.
+Description: |-
+  Seraphina.AGI is a deterministic, stdlib-only Python toolkit that pairs the
+  Roman Wheel Triad consensus engine with the Glyph binary-native package
+  manager. Includes an interactive "build an AI" wizard.
+Moniker: seraphina
+Tags:
+  - agi
+  - glyph
+  - wasm
+  - deterministic
+  - roman-wheel
+ReleaseNotes: |-
+  See https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/releases/tag/v1.0.8
+ReleaseNotesUrl: https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/releases/tag/v1.0.8
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+#
+# NOTE: Before submitting to microsoft/winget-pkgs you must:
+#   1. Cut a GitHub Release at tag v1.0.8 and attach a SeraphinaAGI-1.0.8.zip
+#      containing the project plus install.ps1.
+#   2. Compute the SHA256 of that zip:
+#        Get-FileHash .\SeraphinaAGI-1.0.8.zip -Algorithm SHA256
+#   3. Paste the hash into InstallerSha256 below and the matching URL into
+#      InstallerUrl.
+#   4. Validate locally with:
+#        winget validate --manifest dist\winget\SynerGro.SeraphinaAGI\1.0.8
+#
+PackageIdentifier: SynerGro.SeraphinaAGI
+PackageVersion: 1.0.8
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: install.ps1
+    PortableCommandAlias: seraphina-install
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/releases/download/v1.0.8/SeraphinaAGI-1.0.8.zip
+    InstallerSha256: DF6B2DFF5D597B65E4AE4631DA71206610F418C783E408E5E40586CC8B4C3217
+Dependencies:
+  PackageDependencies:
+    - PackageIdentifier: Python.Python.3.12
+ManifestType: installer
+ManifestVersion: 1.6.0
