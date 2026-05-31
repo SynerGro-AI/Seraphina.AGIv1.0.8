@@ -32,6 +32,42 @@ Requires **Python 3.9+** and **git**. Installs into your user site by default
 (no admin needed). Set `SERAPHINA_SYSTEM_INSTALL=1` (or `-SystemInstall`) for a
 machine-wide install, or activate a venv first.
 
+## Quick Start (PowerShell, beginner-friendly)
+
+After install, open **PowerShell** and just type — you don't need perfect syntax.
+Seraphina understands casual phrasing:
+
+```powershell
+seraphina                       # opens the wizard
+
+# inside the wizard, all of these work:
+hi
+what can you do
+build me a glyph for 179
+list everything
+show me wheel_one
+i want to run wheel_one
+launch wheel_one
+health check
+remember pizza is good
+recall pizza
+plan a chat bot
+bye
+```
+
+Greetings, filler words ("me", "a", "for", "please"), and verb synonyms
+(`launch`/`start`/`run`, `show`/`display`/`view`, `check`/`doctor`/`health check`,
+`remove`/`uninstall`) are all accepted. Type a misspelled command and Seraphina
+will suggest the closest match (`did you mean: run?`).
+
+If you prefer the strict command line, every intent also works as a one-shot:
+
+```powershell
+seraphina -c "build glyph 179"
+seraphina -c "triad hello world"
+seraphina --dry-run -c "make a glyph 100"   # plan only, no execution
+```
+
 ## Use it
 
 ```bash

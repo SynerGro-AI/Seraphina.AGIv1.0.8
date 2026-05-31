@@ -13,6 +13,7 @@ not pretend execution.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
@@ -146,47 +147,124 @@ Intents (natural phrasing works for most):
   plan <text>                honest build plan, no execution
   dry on | dry off           toggle dry-run mode
   version | help | exit
+
+You can talk casually: "build me a glyph for 179", "show me wheel_one",
+"i want to run wheel_one", "what version" - all work.
 """.strip()
+
+
+# Words we strip from the front/middle of casual phrasings so the regex
+# matchers below can ignore filler. "please run wheel_one" -> "run wheel_one".
+_FILLERS = (
+    "please", "pls", "can you", "could you", "would you",
+    "i want to", "i'd like to", "i would like to",
+    "lets", "let's", "go ahead and", "now",
+    "me", "for me", "my", "the", "a", "an", "to",
+    "everything", "all of them", "all",
+)
+# Verb synonyms -> canonical command keyword
+_VERB_ALIASES = {
+    r"\b(?:launch|start|execute|exec|invoke|use)\b": "run",
+    r"\b(?:display|view|inspect|info|details?(?:\s+for)?|describe)\b": "show",
+    r"\b(?:check|verify|test|diagnose|health\s*check)\b": "doctor",
+    r"\b(?:setup|init|initialize|reinit|reinitialize)\b": "bootstrap",
+    r"\b(?:remove|delete|drop|purge)\b": "uninstall",
+    r"\b(?:add|deploy)\b": "install",
+    r"\b(?:catalog|inventory|installed|whats?\s+installed)\b": "list",
+}
+_GREETINGS = re.compile(
+    r"^(?:hi|hey|hello|howdy|yo|hola|greetings|sup|good\s+(?:morning|afternoon|evening))\b",
+    re.IGNORECASE,
+)
+_HELP_PHRASES = re.compile(
+    r"^(?:\?+|help|what\s+can\s+you\s+do|what\s+do\s+you\s+do|"
+    r"how\s+do\s+i\s+(?:use|start)|commands?|menu)\b",
+    re.IGNORECASE,
+)
+_VERSION_PHRASES = re.compile(
+    r"^(?:version|whats?\s+(?:my|the)?\s*version|which\s+version|--?v)\b",
+    re.IGNORECASE,
+)
+
+# Canonical commands used for "did you mean?" suggestions on unknown input.
+_KNOWN_COMMANDS = (
+    "help", "version", "exit", "dry on", "dry off",
+    "build glyph", "forge", "list", "show", "run", "install",
+    "uninstall", "pack", "doctor", "history", "bootstrap",
+    "triad", "remember", "recall", "plan",
+)
+
+
+def _normalize(text: str) -> str:
+    """Lowercase, collapse whitespace, drop common filler words, expand verbs."""
+    s = text.lower().strip()
+    # Expand verb synonyms first (before filler removal so multi-word phrases match)
+    for pat, repl in _VERB_ALIASES.items():
+        s = re.sub(pat, repl, s)
+    # Drop filler words (longest first to avoid partial matches)
+    for word in sorted(_FILLERS, key=len, reverse=True):
+        s = re.sub(rf"\b{re.escape(word)}\b", " ", s)
+    # Collapse whitespace
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
 
 
 def route(line: str, dry_run: bool) -> tuple[bool, bool]:
     """Returns (stop, new_dry_run)."""
-    t = line.strip()
-    if not t:
+    raw = line.strip()
+    if not raw:
         return False, dry_run
-    _append(HISTORY_FILE, {"ts": _now(), "kind": "user", "text": t})
+    _append(HISTORY_FILE, {"ts": _now(), "kind": "user", "text": raw})
 
-    if t in ("exit", "quit", "bye"):
+    # --- greetings / chit-chat ---
+    if _GREETINGS.match(raw):
+        print("  Hi! I'm Seraphina. Type 'help' to see what I can do,")
+        print("  or try: build glyph 179   |   list   |   triad hello world")
+        return False, dry_run
+
+    if _HELP_PHRASES.match(raw):
+        print(HELP_TEXT)
+        return False, dry_run
+
+    if _VERSION_PHRASES.match(raw):
+        print(f"  seraphina {__version__}")
+        return False, dry_run
+
+    # Lowercase, drop filler, expand verb synonyms.
+    t = _normalize(raw)
+
+    if t in ("exit", "quit", "bye", "goodbye", "later", "done"):
         return True, dry_run
     if t == "help":
         print(HELP_TEXT)
         return False, dry_run
-    if t == "version":
-        print(f"  seraphina {__version__}")
-        return False, dry_run
 
-    m = re.fullmatch(r"dry\s+(on|off)", t)
+    m = re.fullmatch(r"dry\s+(on|off|true|false|yes|no)", t)
     if m:
-        nd = (m.group(1) == "on")
+        nd = m.group(1) in ("on", "true", "yes")
         print(f"  dry-run: {nd}")
         return False, nd
 
-    m = re.fullmatch(r"remember\s+(.+)", t)
+    # --- content-bearing commands: extract payload from RAW to preserve case ---
+
+    m = re.match(r"(?i)^\s*remember\s+(.+)$", raw)
     if m:
-        remember(m.group(1))
+        remember(m.group(1).strip())
         return False, dry_run
 
-    m = re.fullmatch(r"recall(?:\s+(.*))?", t)
+    m = re.match(r"(?i)^\s*recall(?:\s+(.*))?$", raw)
     if m:
         recall((m.group(1) or "").strip())
         return False, dry_run
 
-    m = re.fullmatch(r"triad\s+(.+)", t)
+    m = re.match(r"(?i)^\s*triad\s+(.+)$", raw)
     if m:
-        triad(m.group(1))
+        triad(m.group(1).strip())
         return False, dry_run
 
-    m = re.fullmatch(r"(?:build|make|create)\s+(?:a\s+)?glyph\s+(?:for\s+)?(\d+)", t)
+    # --- build glyph <N>  (tolerant: "build me a glyph for 179", "make glyph 100") ---
+    m = re.fullmatch(r"(?:build|make|create|forge)\s+(?:glyph\s+)?(?:for\s+)?(\d+)", t)
     if m:
         n = int(m.group(1))
         g = resolve_geometry_for_value(n)
@@ -196,7 +274,10 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
               f"intersections={g['intersections']} spirals={g['spirals']}")
         if g["check"] != n:
             print(f"  warn: closest reachable is {g['check']}, not {n}")
-        ok = input(f"  forge as '{name}'? [Y/n] ").strip().lower()
+        try:
+            ok = input(f"  forge as '{name}'? [Y/n] ").strip().lower()
+        except EOFError:
+            ok = "y"
         if ok and not ok.startswith("y"):
             print("  cancelled.")
             return False, dry_run
@@ -225,11 +306,12 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
     m = re.fullmatch(r"show\s+(\S+)", t)
     if m: glyph("show", m.group(1), dry_run=dry_run); return False, dry_run
 
-    m = re.fullmatch(r"install\s+(.+)", t)
-    if m: glyph("install", m.group(1), dry_run=dry_run); return False, dry_run
+    # install/pack: take payload from RAW to preserve path case
+    m = re.match(r"(?i)^\s*(?:please\s+)?install\s+(.+)$", raw)
+    if m: glyph("install", m.group(1).strip(), dry_run=dry_run); return False, dry_run
 
-    m = re.fullmatch(r"pack\s+(.+)", t)
-    if m: glyph("pack", m.group(1), dry_run=dry_run); return False, dry_run
+    m = re.match(r"(?i)^\s*(?:please\s+)?pack\s+(.+)$", raw)
+    if m: glyph("pack", m.group(1).strip(), dry_run=dry_run); return False, dry_run
 
     m = re.fullmatch(r"uninstall\s+(\S+)", t)
     if m: glyph("uninstall", m.group(1), dry_run=dry_run); return False, dry_run
@@ -249,13 +331,11 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
             cli += ["--arg", am.group(1)]
         glyph(*cli, dry_run=dry_run); return False, dry_run
 
-    m = re.fullmatch(r"plan\s+(.+)", t)
-    if not m and re.fullmatch(r"(?:build|create|make)\s+(?!glyph\b).+", t):
-        m_text = t
-    else:
-        m_text = m.group(1) if m else None
-    if m_text:
-        print(f"  plan for: {m_text}")
+    # plan: preserve raw text after the verb
+    m = re.match(r"(?i)^\s*plan\s+(.+)$", raw)
+    if m:
+        text = m.group(1).strip()
+        print(f"  plan for: {text}")
         print("    1. break the request into binary-native glyphs (Rule-24 values)")
         print("    2. forge each glyph:  build glyph <N>")
         print("    3. install the packed .glyph files")
@@ -263,7 +343,14 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         print("  (no execution - real implementation requires concrete numeric targets.)")
         return False, dry_run
 
-    print("  unrecognized. type 'help' to see intents.")
+    # --- final fallback: suggest the closest known command ---
+    first = t.split(" ", 1)[0] if t else ""
+    candidates = [c.split(" ", 1)[0] for c in _KNOWN_COMMANDS]
+    suggestion = difflib.get_close_matches(first, candidates, n=1, cutoff=0.6)
+    if suggestion:
+        print(f"  hmm, not sure what '{raw}' means. did you mean: {suggestion[0]}?")
+    else:
+        print("  unrecognized. type 'help' to see what I can do.")
     return False, dry_run
 
 

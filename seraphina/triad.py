@@ -135,8 +135,6 @@ class MercyLearningHeart:
 class GlyphProcessor:
     """Glyph Runtime - geometric programming language (successor to OctaLang)"""
 
-# Backward compatibility alias
-OctaLangProcessor = GlyphProcessor
     def __init__(self):
         self.glyphs = {
             "circle": "πr²",
@@ -360,3 +358,6 @@ They rotate in harmony to achieve balanced AGI responses through φ-powered cons
     def launch_glyph_runtime(self):
         """Launch Glyph runtime (OctaLang compatibility)"""
         return "🌌 Glyph runtime launched (evolved from OctaLang). Geometric consensus established. Roman Wheel spinning at φ harmonics."
+# Backward compatibility alias
+OctaLangProcessor = GlyphProcessor
+
