@@ -5,6 +5,47 @@
 > executable WASM. No pseudo-randomness. No hallucinations in the hot path.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/seraphina-agi.svg)](https://pypi.org/project/seraphina-agi/)
+
+## What's new in 1.0.11
+
+**RWAST — the semantic AST-IR tier.** RWL byte carriers were always lossless,
+but they didn't *understand* code. 1.0.11 adds a real cross-language AST-IR
+with 53 semantic node types, frontends, backends, and a deterministic
+Triad-scored translation pipeline.
+
+```bash
+# Translate Python → JavaScript (semantic, not text)
+glyph transmute app.py --to js
+glyph transmute app.py --to ts
+glyph transmute app.py --to rwast -o app.rwast   # 100% lossless seal
+glyph transmute app.rwast --to python            # round-trip
+
+# Parse → emit in-process, no subprocess
+glyph exec app.py
+
+# From Python:
+from seraphina.rwl.ast_ir import translate, score
+js = translate(open("app.py").read(), src_lang="python", dst_lang="js")
+print(score(original_ast, translated_ast).triad)   # 0.0 - 1.0
+```
+
+11 RWL byte-IR languages (now including `rwast`), 53 NodeTypes, sealed
+binary wire format, and a `TriadScore` (harmonic mean of geometric,
+verification, and mercy-civilization metrics) on every translation.
+
+See [`README_RWAST.md`](README_RWAST.md) for the full API + wire format.
+
+## Community
+
+The geometry side runs deeper than the package. If RWAST / Glyph / the
+Triad core resonate, come find us:
+
+- 🌐 Website: <https://synergroaicorp.com>
+- 💬 Discord: <https://discord.com/channels/1282932068942090252/1510800046340440206> *(username `donum_dei9446`)*
+- ☕ Patreon: <https://www.patreon.com/c/Donum_Dei9446?vanity=user>
+- 🐦 X / Twitter: [@JWCbnFbrMotorId](https://x.com/JWCbnFbrMotorId)
+- 🛠️ GitHub: <https://github.com/SynerGro-AI>
 
 ## Install in 30 seconds
 
