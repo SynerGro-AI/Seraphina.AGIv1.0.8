@@ -7,6 +7,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/seraphina-agi.svg)](https://pypi.org/project/seraphina-agi/)
 
+## What's new in 1.0.12
+
+**README refresh** — pushes the new **"Verify this is real"** trust
+ladder, **community links**, and **cross-links to sibling tools** to the
+PyPI project page. No engine changes from 1.0.11 — purely a docs
+republish so the verification story is visible to anyone reading PyPI
+before they install.
+
 ## What's new in 1.0.11
 
 **RWAST — the semantic AST-IR tier.** RWL byte carriers were always lossless,
@@ -422,6 +430,12 @@ seraphina -c "build glyph 179"
 pip uninstall seraphina-agi glyph
 rm -rf ~/.seraphina      # user data (ledger, packages, memory)
 ```
+
+## Other SynerGro AI tools
+
+- 🛠️ [seraphina-grok-planner](https://github.com/SynerGro-AI/seraphina-grok-planner) — Copilot LM tools (anti-hallucination verifier, planner, zero-API repo grep)
+- 💾 [seraphina-agi-releases](https://github.com/SynerGro-AI/seraphina-agi-releases) — signed Windows installer
+- 🌐 <https://synergroaicorp.com>
 
 ## License
 
