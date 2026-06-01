@@ -47,6 +47,83 @@ Triad core resonate, come find us:
 - 🐦 X / Twitter: [@JWCbnFbrMotorId](https://x.com/JWCbnFbrMotorId)
 - 🛠️ GitHub: <https://github.com/SynerGro-AI>
 
+## Verify this is real
+
+Indie AI tools get accused of being vapor or scams all the time. Here's a
+ladder of independent checks you can run yourself — each rung is stronger
+than the one above it. **None of them require trusting us.**
+
+### Rung 1 — Run the package and watch it work
+
+```bash
+pip install seraphina-agi
+seraphina --version              # → seraphina 1.0.11
+glyph transmute hello.py --to js  # real Python→JS, not a stub
+```
+
+If `glyph transmute` produces working JavaScript from your Python file,
+the engine is real. No network calls, no API keys, no telemetry — pure
+stdlib in-process translation.
+
+### Rung 2 — Verify the wheel hash against PyPI
+
+The SHA256 of every uploaded artifact is published by PyPI itself, not
+by us:
+
+```bash
+# Download without installing
+pip download seraphina-agi==1.0.11 --no-deps -d ./verify
+# Compare to PyPI's published hash
+curl -s https://pypi.org/pypi/seraphina-agi/1.0.11/json | python -c "import sys,json; [print(f['filename'], f['digests']['sha256']) for f in json.load(sys.stdin)['urls']]"
+# Then locally:
+sha256sum ./verify/seraphina_agi-1.0.11-py3-none-any.whl
+```
+
+Expected hashes for v1.0.11:
+
+| File | Size | SHA-256 |
+|---|---|---|
+| `seraphina_agi-1.0.11-py3-none-any.whl` | 100,826 B | `7e306bd042c6155b5b185e317f31b27fd16e6eaeba940e1840f81aac5bb9cc9c` |
+| `seraphina_agi-1.0.11.tar.gz` | 86,749 B | `f11087d887a548f242c6ef10a3c4c0c679cbeda50625eeb46decc2cf255cdf8e` |
+
+If your local hash matches PyPI's published hash, no one tampered with
+the file in transit *or* on PyPI's CDN.
+
+### Rung 3 — Verify the wheel was built by this commit
+
+The PyPI artifact is **not** uploaded by a human. It's built and
+published by GitHub Actions using **PyPI Trusted Publisher (OIDC)** —
+which means there is no long-lived PyPI token anywhere in our repo or
+on any developer's machine.
+
+- **Workflow:** [.github/workflows/publish.yml](.github/workflows/publish.yml)
+- **Trigger:** every `v*` git tag
+- **v1.0.11 was built from commit:** [`96789be`](https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/commit/96789be) on tag [`v1.0.11`](https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/releases/tag/v1.0.11)
+- **Workflow run:** [Actions tab → "Publish to PyPI"](https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/actions/workflows/publish.yml)
+
+This means you can read the exact source that was packaged into the
+wheel, and the chain *commit → CI run → PyPI artifact* is enforced by
+Sigstore-backed OIDC tokens, not by us.
+
+### Rung 4 — Inspect the source
+
+The full engine is here in the open:
+
+- [`seraphina/`](seraphina/) — Triad core + RWL byte-IR + **RWAST** semantic AST-IR
+- [`glyph/`](glyph/) — current-gen Glyph CLI (`transmute`, `exec`, `install`)
+- [`pyproject.toml`](pyproject.toml) — declared dependencies (none — stdlib only)
+- [`tests/`](tests/) — run them yourself
+
+No obfuscation, no compiled binaries, no `eval()` of remote strings,
+no network calls in the hot path. Search the codebase for `urllib`,
+`requests`, `socket` — what you find is the Grok extra (opt-in, off by
+default) and the Glyph install resolver. That's it.
+
+### Other public work by the same author
+
+- [seraphina-grok-planner](https://github.com/SynerGro-AI/seraphina-grok-planner) — Copilot LM tools (anti-hallucination verifier, planner)
+- [seraphina-agi-releases](https://github.com/SynerGro-AI/seraphina-agi-releases) — signed Windows installer
+
 ## Install in 30 seconds
 
 Pick your favorite package manager — they all land you in the same place.
