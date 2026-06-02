@@ -1,0 +1,73 @@
+name: Sign Windows Installer
+
+# DISABLED until Microsoft Identity Validation completes + Certificate Profile is created.
+# To enable:
+#   1. Confirm Trusted Signing identity validation = Completed (Azure Portal)
+#   2. Create Certificate Profile under SynerGroSigning account (e.g. "synergroai-prod")
+#   3. Grant SP role: az role assignment create \
+#        --assignee 6d8410a2-1a5b-478c-b35b-0a6450988996 \
+#        --role "Trusted Signing Certificate Profile Signer" \
+#        --scope /subscriptions/bed89800-5ce9-4dde-89e5-963f694cc8fd/resourceGroups/rg-synergro-signing/providers/Microsoft.CodeSigning/codeSigningAccounts/SynerGroSigning/certificateProfiles/<profile-name>
+#   4. Set repo variable CERT_PROFILE_NAME to the profile name
+#   5. Remove the `if: false` gate below
+#   6. Ensure your release pipeline produces a Windows installer artifact (e.g. dist-windows/Seraphina-Setup.exe)
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write   # Required for Azure OIDC login
+  contents: write   # Required to attach signed artifact to GitHub Release
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  sign:
+    if: false   # <-- REMOVE this line once cert profile exists
+    name: Sign installer with Azure Trusted Signing
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download unsigned installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: dist-windows/
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign with Trusted Signing
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\dist-windows
+          files-folder-filter: exe,msi,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Upload signed installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-signed
+          path: dist-windows/
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-windows/*
