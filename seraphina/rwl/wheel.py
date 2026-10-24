@@ -19,7 +19,7 @@ Axis ranges (bounded by the wheel primitives we already render):
     points        in 0..3    (2 bits)
     dots          in 0..1    (1 bit)
     intersections in 0..3    (2 bits)
-    spirals       in 0..0    (1 bit)  - reserved; always 0 in v1
+    spirals       in 0..1    (1 bit)
 
 Total: 8 bits, packed (sides<<6) | (points<<4) | (dots<<3) | (intersections<<1) | spirals
 """
