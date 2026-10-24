@@ -66,7 +66,7 @@ def load_entrypoint(code_dir: str | Path, entrypoint: str,
     try:
         target.relative_to(pkg_root)
     except ValueError:
-        raise SandboxError(f"entrypoint escapes package root: {entrypoint!r}")
+        raise SandboxError(f"entrypoint escapes package root: {entrypoint!r}") from None
     if not target.is_file():
         raise SandboxError(f"entrypoint not found: {target}")
 

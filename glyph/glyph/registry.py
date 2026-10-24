@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from .index import GlyphIndex, DEFAULT_ROOT
+from .index import GlyphIndex
 from .manifest import Manifest, ManifestError
 
 

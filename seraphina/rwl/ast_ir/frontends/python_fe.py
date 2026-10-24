@@ -7,7 +7,6 @@ the corresponding RWAST node tree.
 from __future__ import annotations
 
 import ast as _ast
-from typing import Any
 
 from ..nodes import Node, NodeType
 
@@ -56,10 +55,7 @@ class _Visitor:
     def _annotation(self, ann) -> str | None:
         if ann is None:
             return None
-        try:
-            return _ast.unparse(ann)
-        except Exception:
-            return None
+        return _ast.unparse(ann)
 
     # --- module -------------------------------------------------------
     def visit_Module(self, node: _ast.Module) -> Node:

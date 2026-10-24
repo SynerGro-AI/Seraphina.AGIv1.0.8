@@ -39,7 +39,7 @@ def attach(host: Any, *,
 
     glyphs = _registry.discover()
     try:
-        setattr(host, "glyphs", glyphs)
+        host.glyphs = glyphs
     except (AttributeError, TypeError):
         pass
 
@@ -47,7 +47,7 @@ def attach(host: Any, *,
     if on_signal is not None:
         token = _signals.subscribe("*", on_signal)
         try:
-            setattr(host, "_glyph_sub_token", token)
+            host._glyph_sub_token = token
         except (AttributeError, TypeError):
             pass
 

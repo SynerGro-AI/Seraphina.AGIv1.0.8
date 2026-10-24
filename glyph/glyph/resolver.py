@@ -104,7 +104,7 @@ def _index_url() -> str:
 
 def _fetch_text(url: str, *, timeout: float = 30.0) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (validated scheme)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         if resp.status != 200:
             raise ResolverError(f"index fetch failed ({url}): HTTP {resp.status}")
         return resp.read().decode("utf-8")
@@ -129,7 +129,7 @@ def fetch_index(url: Optional[str] = None) -> dict:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ResolverError(f"glyph-index.json is not valid JSON: {e}")
+        raise ResolverError(f"glyph-index.json is not valid JSON: {e}") from e
     if not isinstance(data, dict):
         raise ResolverError("glyph-index.json must be a JSON object")
     return data
@@ -227,7 +227,7 @@ def download(url: str, *, dest_dir: Optional[Path] = None, timeout: float = 120.
 
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     h = hashlib.sha256()
-    with urllib.request.urlopen(req, timeout=timeout) as resp, out.open("wb") as f:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as resp, out.open("wb") as f:
         if resp.status != 200:
             raise ResolverError(f"download failed ({url}): HTTP {resp.status}")
         while True:

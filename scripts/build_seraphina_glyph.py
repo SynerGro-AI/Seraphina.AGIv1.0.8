@@ -110,7 +110,7 @@ def main() -> int:
 
     # Add glyph repo root to sys.path so we can import the in-tree glyph cli
     sys.path.insert(0, str(ROOT / "glyph"))
-    from glyph.cli import main as glyph_main  # noqa: E402
+    from glyph.cli import main as glyph_main
 
     print(f"[3/4] packing -> {out_path}")
     DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -120,7 +120,7 @@ def main() -> int:
         return rc
 
     digest = _sha256_file(out_path)
-    print(f"[4/4] done")
+    print("[4/4] done")
     print(f"  archive : {out_path}")
     print(f"  size    : {out_path.stat().st_size} bytes")
     print(f"  sha256  : {digest}")

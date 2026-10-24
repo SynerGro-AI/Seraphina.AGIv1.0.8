@@ -17,7 +17,6 @@ Module-level public surface::
     set_host(name | callable) -> None
 """
 from __future__ import annotations
-import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -252,7 +251,7 @@ def load_module(code_dir: str | Path, entrypoint: str,
     try:
         p.relative_to(Path(code_dir).resolve())
     except ValueError:
-        raise WasmError(f"entrypoint escapes package root: {entrypoint!r}")
+        raise WasmError(f"entrypoint escapes package root: {entrypoint!r}") from None
     info = validate_wasm(p)
     fn = _resolve_host(host)
     return fn(info)

@@ -1,4 +1,8 @@
 """Frontends: parse source code into RWAST."""
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..nodes import Node
 from .python_fe import parse_python
 
 SUPPORTED = {"python", "py"}

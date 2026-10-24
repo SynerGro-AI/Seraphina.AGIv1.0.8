@@ -110,8 +110,9 @@ class RwastTest(unittest.TestCase):
         once = translate(SAMPLE_PY, "python", "python")
         twice = translate(once, "python", "python")
         self.assertEqual(once, twice)
-        run = lambda src: subprocess.run([sys.executable, "-c", src], capture_output=True,
-                                         text=True, timeout=30)
+        def run(src):
+            return subprocess.run([sys.executable, "-c", src], capture_output=True,
+                                  text=True, timeout=30, check=False)
         a, b = run(SAMPLE_PY), run(once)
         self.assertEqual(a.returncode, 0, a.stderr)
         self.assertEqual((b.returncode, b.stdout), (0, a.stdout), b.stderr)
@@ -125,7 +126,7 @@ class RwastTest(unittest.TestCase):
         self.assertGreater(s.consensus, 0.0)
 
     def test_unsupported_frontend_is_an_error(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):
             parse("console.log(1)", "js")
 
 

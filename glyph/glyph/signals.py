@@ -59,7 +59,8 @@ def publish(name: str, payload: Optional[dict] = None) -> int:
         try:
             fn(name, payload)
         except Exception as e:  # noqa: BLE001 — bus must never raise
-            _warnings.warn(f"glyph signal subscriber raised: {e!r}", RuntimeWarning)
+            _warnings.warn(f"glyph signal subscriber raised: {e!r}", RuntimeWarning,
+                           stacklevel=2)
         n += 1
     return n
 

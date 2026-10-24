@@ -140,8 +140,6 @@ def emit_signal(name: str, payload: Optional[dict] = None) -> None:
     except OSError:
         return
     # Also fan out to any in-process subscribers (Seraphina core, etc).
-    try:
-        from . import signals as _signals
-        _signals.publish(name, payload)
-    except Exception:  # noqa: BLE001 — never let pub/sub break identity calls
-        pass
+    # signals.publish() already turns a failing subscriber into a warning.
+    from . import signals as _signals
+    _signals.publish(name, payload)
