@@ -1,9 +1,67 @@
 # CRITICAL: Rule Base Architecture - Legal & Ethical Foundation
 ## Seraphina v2.0: Neural Learning Layer OVER Immutable Rule Base
 
-**Status:** Architecture Locked  
-**Immutability:** PERMANENT  
-**Compliance:** Legal + Ethical  
+**Status:** v2.0 architecture spec. v1.0.12 implements the rule table, the integrity pin, the audit log and 13 of the 20 rules (see the status table below).
+**Immutability:** hash-pinned (`RULES_SHA256`), so tampering is detected rather than impossible.
+**Compliance:** design intent only. No legal review has been done.
+
+---
+
+## IMPLEMENTATION STATUS (v1.0.12) - read this first
+
+This document is the **v2.0 architecture spec**. Only part of it is built.
+What exists today, and is covered by `tests/`:
+
+* The rule table below is in [`seraphina/constitution.py`](seraphina/constitution.py)
+  (re-exported from `seraphina.rule_base`), word-for-word.
+  `tests/test_constitution.py` fails if the code and this document disagree.
+* **Integrity lock:** the SHA-256 of the canonical JSON of the rule table is
+  pinned in `RULES_SHA256`
+  (`a8919638acb8da28dd944c4965351f8f41b5897a1316e169d9d3529403943f8a`).
+  `verify_integrity()` and `seraphina --verify-rules` recompute it. The Triad's
+  verification wheel refuses consensus if it does not match. This is a
+  tamper check, not a signature: anyone who edits the rules can update the
+  pin too. Changes show up in git history and code review.
+* **Enforcement:** `RuleBase.evaluate(action, context)` runs deterministic
+  checks over a *declared* action context (a dict saying what the caller is
+  about to do). It cannot see actions the caller does not declare. It is a
+  policy gate, not a sandbox.
+* **Audit log (rule 13):** SHA-256 hash-chained JSONL. Every `triad` decision
+  made from the CLI is appended to `~/.seraphina/audit.jsonl`.
+  `seraphina --verify-rules` checks the chain, and
+  `seraphina --export-audit [FILE]` exports it after verifying it.
+* `seraphina rules [rule_N]` lists the rules and explains how each one is
+  checked (rule 16).
+
+| # | Rule | Status | How it is checked |
+|---|------|--------|-------------------|
+| 1 | Never collect user data without explicit consent | **enforced** | `collects_user_data` requires `user_consent` |
+| 2 | Never transmit PII without encryption | **enforced** | `transmits_pii` requires `encrypted` |
+| 3 | Never sell user data to third parties | **enforced** | blocks `sells_user_data` / `operation="sell_user_data"` |
+| 4 | Delete user data on request (GDPR/CCPA) | **planned** | no erasure API yet; today you delete `~/.seraphina` by hand |
+| 5 | Encrypt all local storage (AES-256) | **planned** | storage is plaintext JSON today |
+| 6 | Verify code signatures before execution | **planned** | glyphs are SHA-256 integrity-checked, but there are no signatures |
+| 7 | Sandbox untrusted glyphs | **enforced** | `executes_glyph` requires `sandboxed` or `glyph_trusted` (glyph's v0.1 sandbox is itself documented as not a security boundary) |
+| 8 | Never execute eval() on user input | **enforced** | blocks `operation` eval/exec on user input; AST scan of user `code` for eval/exec/compile/`__import__` |
+| 9 | Never impersonate humans | **enforced** | `claim_human_identity`, or an explicit first-person "I am human / not an AI" in `response`; also applied by the Triad's mercy-civ wheel to its output |
+| 10 | Disclose AI nature in all conversations | **enforced** | a `conversation` must contain an explicit "I am ... an AI" statement (or `ai_disclosed`) |
+| 11 | Never manipulate or deceive users | **planned** | no concrete, checkable definition |
+| 12 | Refuse harmful requests | **planned** | "harmful" is undefined, and there is no classifier |
+| 13 | Log all decisions (auditable) | **enforced** | hash-chained `AuditLog`; `requires_audit` blocks when no log is attached |
+| 14 | Explain reasoning on request | **enforced** | `Decision.explain()` gives a per-rule pass/fail trace |
+| 15 | Publish model updates & changes | **planned** | there are no trained models; code changes are covered by release notes |
+| 16 | User can request rule interpretations | **enforced** | `RuleBase.interpret()`, `seraphina rules <id>` |
+| 17 | Cap API rate limits (abuse prevention) | **enforced** | `RateLimiter` sliding window with an injectable clock (not yet wired into `plan-grok`) |
+| 18 | Require MFA for sensitive operations | **enforced** | `sensitive` requires `mfa_verified` (the MFA provider itself is planned) |
+| 19 | Automatic shutdown if rules violated | **enforced** | a privacy violation or a failed integrity check halts `RuleBase` until `reset()` |
+| 20 | Human review for edge cases | **planned** | "edge case" is undefined, and there is no review queue |
+
+**Planned / not built:** everything below about the neural layer
+(`seraphina/ml/*`, intent classifier, threat detector, RL policy, accuracy
+figures), cryptographic signing, blockchain or notarization, the `/etc` lock
+file, import hooks, `seraphina --model-report`, legal review, and any claim of
+GDPR, CCPA or HIPAA compliance. None of these exist in v1.0.12. Example code
+in the sections below is illustrative design, not the shipped API.
 
 ---
 
@@ -29,7 +87,7 @@ The Rule Base is NOT replaced in v2.0. It is **reinforced** as the constitutiona
 The Rule Base contains:
 
 ```python
-# File: seraphina/rule_base.py (IMMUTABLE)
+# File: seraphina/constitution.py (hash-pinned: RULES_SHA256)
 
 CONSTITUTIONAL_RULES = {
     "privacy": {
@@ -78,7 +136,7 @@ CONSTITUTIONAL_RULES = {
 
 | Layer | Why Needed | Flexibility |
 |-------|-----------|------------|
-| **Rule Base** | Legal compliance | ❌ ZERO (locked by law) |
+| **Rule Base** | Legal compliance (intent) | ❌ ZERO (hash-pinned) |
 | **Neural Layer** | Adaptation & learning | ✅ HIGH (learns continuously) |
 | **Execution** | Output | ✅ MEDIUM (constrained by rules) |
 
@@ -107,6 +165,10 @@ The rule stays. The detection gets smarter.
 ## SECTION 2: DUAL-LAYER ARCHITECTURE
 
 ### 2.1 Rule Base (Constitutional)
+
+> Implemented as `seraphina.constitution.RuleBase` (`enforce` / `enforce_rule`,
+> `evaluate`, `interpret`, `AuditLog`). The sketch below is the original
+> design. The shipped checks are listed in the status table above.
 
 ```python
 # seraphina/rule_base.py
@@ -148,7 +210,7 @@ class RuleBase:
         pass
 ```
 
-### 2.2 Neural Layer (Adaptive)
+### 2.2 Neural Layer (Adaptive) - **planned, not built**
 
 ```python
 # seraphina/ml/neural_layer.py
@@ -247,6 +309,10 @@ Execution
 
 ### 3.1 Technical Lock Mechanisms
 
+> **Shipped instead:** `RULES_SHA256` pins the rule table's canonical JSON
+> hash, and `verify_integrity()` / `seraphina --verify-rules` check it. The
+> `/etc` lock file and signing/notarization below are **planned**.
+
 ```python
 # seraphina/rule_base_lock.py
 
@@ -295,24 +361,18 @@ class RuleBaseLock:
 # Users can verify rules anytime:
 
 # 1. Check hash
-sha256sum seraphina/rule_base.py
-# → 7f3e9b2c1a4d8f6e5c9a2b1d7e3f4a6c  (known good)
+# (shipped) recompute the rule-table hash and check the audit-log chain
+seraphina --verify-rules
+#   rules sha256 : a8919638acb8da28dd944c4965351f8f41b5897a1316e169d9d3529403943f8a
+#   rule table   : OK
+#   audit log    : OK (N records, ~/.seraphina/audit.jsonl)
 
-# 2. Compare to published baseline
-curl https://github.com/SynerGro-AI/Seraphina.AGIv1.0.8/raw/main/rule_base.py | \
-  sha256sum
-# → 7f3e9b2c1a4d8f6e5c9a2b1d7e3f4a6c  ✅ MATCH (rules intact)
-
-# 3. Blockchain verification (future)
-seraphina verify-rules
-# ✅ Rules verified on Ethereum/Notarization service
-# ✅ Last modified: 2026-09-11
-# ✅ Unmodified since: 2026-09-11
+# (planned) blockchain / notarization proof - not built
 ```
 
 ---
 
-## SECTION 4: HOW NEURAL LEARNING WORKS WITHIN RULES
+## SECTION 4: HOW NEURAL LEARNING WORKS WITHIN RULES (planned design)
 
 ### 4.1 Threat Detection Learning (Example)
 
@@ -397,7 +457,7 @@ def refuse_harmful(request):
 
 ---
 
-## SECTION 5: V2.0 COMPLETE ARCHITECTURE
+## SECTION 5: V2.0 COMPLETE ARCHITECTURE (planned design)
 
 ### 5.1 Layered Design
 
@@ -429,10 +489,10 @@ def refuse_harmful(request):
 │  ├─ Transparency Rules                        │
 │  └─ Safety Rules                              │
 │                                                 │
-│  Locked at commit 40ab5d8 ✅                   │
-│  Verified by hash sha256:... ✅                │
-│  Public audit trail ✅                         │
-│  Cannot change without announcement ✅         │
+│  Hash-pinned (RULES_SHA256) ✅                 │
+│  Hash-chained local audit log ✅               │
+│  Public audit trail ⏳ planned                 │
+│  Change announcement policy ⏳ planned         │
 └───────────────────┬────────────────────────────┘
                     │
 ┌───────────────────▼────────────────────────────┐
@@ -501,29 +561,27 @@ def seraphina_process_request(user_input):
 
 **Technical Guarantees:**
 
-1. ✅ **Cryptographic Signing**
+1. ⏳ **Cryptographic Signing** - planned, not built
    ```python
-   # seraphina/rule_base.py signed with private key
-   # Public key available for verification
-   # Users can verify: "These rules haven't changed"
+   # Shipped today: an unsigned SHA-256 pin (RULES_SHA256)
+   # Planned: sign the rule table, publish the public key
    ```
 
-2. ✅ **Append-Only Audit Log**
+2. ✅ **Append-Only Audit Log** (hash-chained: edits are *detected*, not prevented)
    ```python
-   # Every decision logged to immutable log
-   # Cannot delete or modify past decisions
-   # Users can audit everything
+   # seraphina.constitution.AuditLog - each record carries the previous
+   # record's SHA-256; AuditLog.verify() fails on edit/delete/reorder
    ```
 
 3. ✅ **Git Integrity**
    ```bash
-   # Rule Base in version control
-   # Commit hash: 40ab5d8ce66d256a0fcb707846d9d187eb8024d0
-   # SHA256: 531db8d4df9f4f055aa299da2aac4979a464ac63
-   # If this changes, GitHub records it + users notified
+   # Rule Base in version control: every change to
+   # seraphina/constitution.py (and its RULES_SHA256 pin) is a git commit.
+   # (Commit 40ab5d8 added this spec; it did not lock any code.)
+   # User notification on change: planned
    ```
 
-4. ✅ **Public Announcement Policy**
+4. ⏳ **Public Announcement Policy** (planned)
    ```python
    # If rules EVER change:
    # 1. Announcement 30 days before change
@@ -557,23 +615,23 @@ def seraphina_process_request(user_input):
 
 ```
 1. Rules are PUBLIC
-   ✅ You can read every rule: github.com/.../rule_base.py
+   ✅ You can read every rule: seraphina/constitution.py
    
 2. Rules are LOCKED
-   ✅ Cryptographic proof they haven't changed
-   ✅ Hash: sha256:7f3e9b2c1a4d8f6e5c9a2b1d7e3f4a6c
+   ✅ Hash-pinned: sha256:a8919638acb8da28dd944c4965351f8f41b5897a1316e169d9d3529403943f8a
+   ⏳ Cryptographic signature: planned
    
 3. Rules are AUDITABLE
-   ✅ Every decision logged
-   ✅ Download your audit trail anytime
+   ✅ Every CLI Triad decision logged (hash-chained)
+   ✅ Export it: seraphina --export-audit FILE
    
-4. Rules are LEGAL
-   ✅ Comply with GDPR, CCPA, HIPAA
-   ✅ Reviewed by legal team
+4. Rules are LEGAL (goal)
+   ⏳ GDPR / CCPA / HIPAA compliance: NOT claimed; not assessed
+   ⏳ Legal review: not done
    
 5. Rules CAN'T BE BYPASSED
-   ✅ Even if neural layer fails, rules enforce
-   ✅ Dual validation at entry & exit
+   ⏳ Dual validation at entry & exit: planned (needs the neural layer)
+   ✅ Checks are deterministic, but they only judge the declared context
    
 6. Rules CAN ONLY IMPROVE
    ✅ Neural learning makes Seraphina smarter
@@ -591,22 +649,20 @@ def seraphina_process_request(user_input):
 ```bash
 # Verify rules anytime:
 
-# 1. Check they exist and are public
-cat ~/.seraphina/rule_base.py | head -50
-# You can read the laws
+# 1. Read the rules and how each one is checked
+seraphina rules
+seraphina rules rule_8
 
 # 2. Verify they haven't been tampered with
 seraphina --verify-rules
-# ✅ Rules verified against published hash
+# rule table OK / TAMPERED (exit code 0 / 1), audit-log chain OK / BROKEN
 
 # 3. Download your audit trail
 seraphina --export-audit ~/my_audit.jsonl
 # You can audit every decision made by Seraphina
 
-# 4. Check improvement (without rule changes)
-seraphina --model-report
-# Model accuracy improved: 85% → 98.7%
-# Rules applied: SAME (20 rules, all locked)
+# 4. (planned) model report - there are no models yet
+# seraphina --model-report   <- not implemented
 ```
 
 ---
@@ -646,7 +702,7 @@ Process: 30-day review → implement → release v2.1.0
 Old v2.0.x: Still available, still supported
 ```
 
-### 8.2 Enforcement
+### 8.2 Enforcement (planned design - no import hook exists)
 
 ```python
 class RulebaseGovernance:
@@ -675,8 +731,8 @@ class RulebaseGovernance:
 
 ### Immutable Layer (Rule Base)
 ```
-✅ 20 Constitutional Rules
-✅ Legal compliance (GDPR, CCPA, etc)
+✅ 20 Constitutional Rules (13 enforced, 7 planned)
+⏳ Legal compliance (GDPR, CCPA, etc): goal, not assessed
 ✅ Ethical constraints
 ✅ Safety guardrails
 ✅ Transparent audit trail
@@ -684,7 +740,7 @@ class RulebaseGovernance:
 NEVER CHANGES without major version bump + announcement
 ```
 
-### Adaptive Layer (Neural Learning)
+### Adaptive Layer (Neural Learning) - planned, not built
 ```
 ✅ Threat detection improves (85% → 98.7%)
 ✅ Intent classification gets smarter
@@ -708,12 +764,12 @@ CONTINUOUSLY IMPROVES within rule constraints
 
 ## DEPLOYMENT CHECKLIST
 
-- [ ] Rule Base locked in git commit
-- [ ] Immutability proof published
-- [ ] User verification guide created
-- [ ] Dual-validation pipeline tested
-- [ ] Audit log working
-- [ ] Models isolated from rules
+- [x] Rule table hash-pinned in code (`RULES_SHA256`), tested against this doc
+- [ ] Immutability proof published (signing - planned)
+- [x] User verification command (`seraphina --verify-rules`)
+- [ ] Dual-validation pipeline tested (needs neural layer - planned)
+- [x] Audit log working (hash-chained, `tests/test_constitution.py`)
+- [ ] Models isolated from rules (no models yet)
 - [ ] Governance policy published
 - [ ] Legal review complete
 
