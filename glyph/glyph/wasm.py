@@ -3,8 +3,9 @@
 Goals:
   * Validate `.wasm` modules using only the stdlib (magic + section walk).
   * Provide a pluggable `WasmRuntime` host with auto-detection of
-    ``wasmtime``, then ``wasmer`` if present; otherwise a deterministic
-    `null_host` mode that *only* loads/inspects without invoking.
+    ``wasmtime`` if present; otherwise a deterministic `null_host` mode
+    that *only* loads/inspects without invoking. A ``wasmer`` adapter is
+    planned and not built: asking for it explicitly raises WasmError.
   * Never raise import errors from missing wasm runtimes — Glyph remains
     stdlib-only by default; runtime dependencies are opt-in.
 
@@ -177,11 +178,9 @@ def available_hosts() -> list[str]:
         found.append("wasmtime")
     except ImportError:
         pass
-    try:
-        import wasmer  # noqa: F401
-        found.append("wasmer")
-    except ImportError:
-        pass
+    # wasmer is not listed: its adapter is planned, not built, so auto-detect
+    # must never pick it (that would make load_module fail on hosts that have
+    # wasmer but not wasmtime).
     found.append("null")  # always available (load-only, no invoke)
     return found
 
@@ -230,8 +229,8 @@ def _resolve_host(name: Optional[str] = None) -> HostFn:
             import wasmer  # noqa: F401
         except ImportError as e:
             raise WasmError(f"wasmer host requested but not installed: {e}") from None
-        # Minimal wasmer host (left as future enhancement).
-        raise WasmError("wasmer host adapter not yet implemented")
+        raise WasmError("wasmer host adapter is planned, not built; "
+                        "install wasmtime or use host='null'")
     raise WasmError(f"unknown wasm host: {name!r}")
 
 

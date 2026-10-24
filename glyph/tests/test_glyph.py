@@ -1046,6 +1046,12 @@ class TestWasmHosts(unittest.TestCase):
         hosts = available_hosts()
         self.assertIn("null", hosts)
 
+    def test_unbuilt_wasmer_adapter_is_never_auto_selected(self):
+        from glyph.wasm import available_hosts, _resolve_host, WasmError
+        self.assertNotIn("wasmer", available_hosts())
+        with self.assertRaises(WasmError):
+            _resolve_host("wasmer")
+
     def test_null_host_loads_but_cannot_invoke(self):
         from glyph.wasm import load_module, WasmError, set_host
         try:
