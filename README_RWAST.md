@@ -111,8 +111,13 @@ JS / TS frontends (and Rust, Go, C, Java backends) are next.
 | `int`    | `parseInt`      |
 | `float`  | `parseFloat`    |
 | `abs`    | `Math.abs`      |
-| `max`    | `Math.max`      |
-| `min`    | `Math.min`      |
+| `max(a, b, ...)` | `Math.max(a, b, ...)` |
+| `min(a, b, ...)` | `Math.min(a, b, ...)` |
+| `max(xs)` / `min(xs)` (one iterable) | `Math.max(...xs)` / `Math.min(...xs)` |
+| `range(stop)` / `range(start, stop[, step])` | `Array.from(...)` (inline helper; step 0 throws `RangeError`) |
+| `sum(xs[, start])` | `[...xs].reduce((a, b) => a + b, start)` |
+| `sorted(xs[, key=f][, reverse=True])` | copy + `.sort()` with a Python-order comparator (the input is not mutated) |
+| `enumerate(xs[, start])` | `Array.from(xs, (v, i) => [i + start, v])` |
 | `round`  | `Math.round`    |
 | `None`   | `null`          |
 | `True`   | `true`          |
@@ -129,7 +134,9 @@ JS / TS frontends (and Rust, Go, C, Java backends) are next.
 
 ## Roman Wheel Triad fidelity scoring
 
-Every translation can be scored against the original tree:
+Any two RWAST trees can be scored against each other with `score()`.
+`translate()` does not score automatically. Only a Python frontend exists, so
+the usual check is the Python round trip:
 
 ```python
 from seraphina.rwl.ast_ir import parse, emit, score
@@ -213,8 +220,12 @@ export function greet(name: any): void {
 - **Type annotations** in Python (`int`, `list[str]`, ...) carry into TS as `: any`
   for now; a smarter type bridge is planned
 
-These are tracked deliberately so the engine never silently drops
-semantics — every gap surfaces in the Mercy-Civ score.
+Python constructs the frontend cannot parse become `UNKNOWN` / raw nodes, and
+those lower the Mercy-Civ score. Backend-side gaps, such as the slice comments
+above, do **not** affect the score, which is why they are listed here.
+`range()` is materialised as an array (JS has no lazy range), so printing a
+bare `range` object gives a different result from Python's `range(0, n)`
+repr.
 
 ---
 
@@ -224,8 +235,8 @@ semantics — every gap surfaces in the Mercy-Civ score.
 - Rust / Go / Java / C backends
 - Smart slice → `.slice()` rewrite
 - Python type-hint → TypeScript type bridge
-- `glyph transmute` / `glyph run` integration (build to RWAST binary,
-  then re-emit in any language on the fly)
+- `glyph run` of RWAST-packed packages (`glyph transmute` and `glyph exec`
+  already ship)
 - Bytecode-level optimization passes operating on RWAST before emission
 
 ---

@@ -11,6 +11,11 @@ Operator / builtin mapping table (Python → JS):
     f-strings → template literals  `${...}`
     print(...)  → console.log(...)
     len(x)      → x.length    (1-arg only)
+    range(...)  → Array.from(...) array with Python start/stop/step semantics
+    sorted(x[, key, reverse]) → [...x].sort(<Python-order comparator>)
+    sum(x[, s]) → [...x].reduce((a, b) => a + b, s)
+    max(x)/min(x) of one iterable → Math.max(...x) / Math.min(...x)
+    enumerate(x[, s]) → [...x].map((v, i) => [i + s, v])
     str/int/float/abs/max/min/round → String/parseInt/parseFloat/Math.abs/Math.max/Math.min/Math.round
 """
 from __future__ import annotations
@@ -41,7 +46,6 @@ _BUILTINS = {
     "max": "Math.max",
     "min": "Math.min",
     "round": "Math.round",
-    "sorted": "Array.from",
     "list": "Array.from",
     "dict": "Object.fromEntries",
     "set": "new Set",
@@ -299,6 +303,10 @@ class JSBackend:
             positional = [c for c in args_nodes if c.kind != NodeType.KWARG]
             if len(positional) == 1:
                 return self.emit(positional[0], 0) + ".length"
+        if func_node.kind == NodeType.NAME:
+            special = self._emit_builtin_special(func_node.data.get("id"), args_nodes)
+            if special is not None:
+                return special
         func_str = self._map_builtin(func_node)
         args: list[str] = []
         for c in args_nodes:
@@ -311,6 +319,44 @@ class JSBackend:
             else:
                 args.append(self.emit(c, 0))
         return f"{func_str}({', '.join(args)})"
+
+    def _emit_builtin_special(self, name, args_nodes: list) -> "str | None":
+        """Builtins whose JS form is not a plain rename. Returns None to fall
+        back to the generic call path (e.g. for *args)."""
+        if any(c.kind == NodeType.STARRED for c in args_nodes):
+            return None
+        pos = [self.emit(c, 0) for c in args_nodes if c.kind != NodeType.KWARG]
+        kw = {c.data.get("key"): (self.emit(c.children[0], 0) if c.children else "undefined")
+              for c in args_nodes if c.kind == NodeType.KWARG}
+        t = self._type_suffix
+        if name == "range" and not kw and 1 <= len(pos) <= 3:
+            # Python range() -> a real array (works in for-of, spread, .length).
+            if len(pos) == 1:
+                return (f"Array.from({{ length: Math.max(0, {pos[0]}) }}, "
+                        f"(_{t}, i{t}) => i)")
+            start, stop = pos[0], pos[1]
+            step = pos[2] if len(pos) == 3 else "1"
+            return (f"((s{t}, e{t}, st{t}) => {{ if (st === 0) throw new RangeError("
+                    f"\"range() arg 3 must not be zero\"); return Array.from({{ length: "
+                    f"Math.max(0, Math.ceil((e - s) / st)) }}, (_{t}, i{t}) => s + i * st); }})"
+                    f"({start}, {stop}, {step})")
+        if name == "sorted" and len(pos) == 1 and set(kw) <= {"key", "reverse"}:
+            ka = f"({kw['key']})(a)" if "key" in kw else "a"
+            kb = f"({kw['key']})(b)" if "key" in kw else "b"
+            cmp = f"(a{t}, b{t}) => ({ka} < {kb} ? -1 : {ka} > {kb} ? 1 : 0)"
+            out = f"[...{pos[0]}].sort({cmp})"
+            if "reverse" in kw:
+                out = f"(({kw['reverse']}) ? {out}.reverse() : {out})"
+            return out
+        if name == "sum" and not kw and 1 <= len(pos) <= 2:
+            init = pos[1] if len(pos) == 2 else "0"
+            return f"[...{pos[0]}].reduce((a{t}, b{t}) => a + b, {init})"
+        if name in ("max", "min") and not kw and len(pos) == 1:
+            return f"Math.{name}(...{pos[0]})"
+        if name == "enumerate" and not kw and 1 <= len(pos) <= 2:
+            start = pos[1] if len(pos) == 2 else "0"
+            return f"[...{pos[0]}].map((v{t}, i{t}) => [i + {start}, v])"
+        return None
 
     def _map_builtin(self, func_node: Node) -> str:
         if func_node.kind == NodeType.NAME:
