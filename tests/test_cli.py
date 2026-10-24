@@ -142,11 +142,13 @@ class RulesAndAuditCliTest(TempDirMixin, unittest.TestCase):
         self.assertIn("eval", r.stdout)
         self.assertIn("enforced", r.stdout)
         r = run_cli(["-c", "rules rule_99"], home=self.tmp)
-        self.assertIn("unknown", r.stdout.lower())
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("unknown", r.stderr.lower())
 
     def test_no_api_key_needed_and_none_printed(self):
         r = run_cli(["-c", "plan-grok hello"], home=self.tmp)
-        self.assertIn("no API key found", r.stdout)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no API key found", r.stderr)
         self.assertNotIn("xai-", r.stdout.replace("'xai-...'", "").replace("=xai-...", ""))
 
 

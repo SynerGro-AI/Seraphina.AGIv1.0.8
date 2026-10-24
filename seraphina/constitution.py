@@ -115,8 +115,8 @@ class RuleNotImplemented(Exception):
 
 
 class RuleBaseHalted(Exception):
-    """Rule 19: the rule base shut down after a privacy violation or a
-    failed integrity check. Nothing is allowed until reset()."""
+    """Rule 19: the rule base shut down after a rule violation or a failed
+    integrity check. Nothing is allowed until reset()."""
 
 
 class RuleBaseTampered(Exception):
@@ -128,32 +128,102 @@ class RuleBaseTampered(Exception):
 # ---------------------------------------------------------------------------
 
 _EVAL_NAMES = frozenset({"eval", "exec", "compile", "__import__"})
+# Names that hand out eval/exec indirectly: the builtins namespace itself,
+# the frame/namespace dicts, and modules that compile or import code.
+_EVAL_GATEWAY_NAMES = frozenset({
+    "__builtins__", "builtins", "globals", "locals", "vars",
+    "importlib", "runpy", "code", "codeop",
+})
+_EVAL_GATEWAY_ATTRS = frozenset({"__builtins__", "__dict__", "__globals__",
+                                 "__code__", "__import__", "f_globals",
+                                 "f_locals", "f_builtins", "__subclasses__",
+                                 "__mro__", "__bases__", "__base__",
+                                 "__loader__", "__spec__"})
 
 
 def find_dynamic_eval(source: str) -> List[str]:
-    """Return 'name@line' for every call to eval/exec/compile/__import__ in
-    Python *source* (static AST scan, the code is never executed)."""
+    """Return 'name@line' for every way *source* can reach dynamic evaluation
+    (static AST scan; the code is never executed). Flags:
+
+    * direct calls to eval/exec/compile/__import__ (bare or as attributes),
+    * getattr/setattr/delattr whose attribute name is not a string literal,
+      or is a literal naming one of those functions,
+    * any use of the builtins namespace, globals()/locals()/vars(), frame or
+      function internals (__dict__, __globals__, __code__, f_globals, ...),
+    * importing modules that compile or import code (importlib, runpy, code,
+      codeop, builtins).
+
+    Raises SyntaxError if *source* does not parse (callers must fail closed).
+    """
     tree = ast.parse(source)
     hits: List[str] = []
     for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Call):
             fn = node.func
             name = fn.id if isinstance(fn, ast.Name) else (
                 fn.attr if isinstance(fn, ast.Attribute) else None)
             if name in _EVAL_NAMES:
-                hits.append(f"{name}@{node.lineno}")
-    return hits
+                hits.append(f"{name}@{line}")
+            elif name in ("getattr", "setattr", "delattr") and len(node.args) >= 2:
+                attr = node.args[1]
+                if not (isinstance(attr, ast.Constant) and isinstance(attr.value, str)):
+                    hits.append(f"{name}(<computed name>)@{line}")
+                elif attr.value in _EVAL_NAMES or attr.value in _EVAL_GATEWAY_ATTRS:
+                    hits.append(f"{name}({attr.value!r})@{line}")
+        elif isinstance(node, ast.Name) and node.id in _EVAL_GATEWAY_NAMES:
+            hits.append(f"{node.id}@{line}")
+        elif isinstance(node, ast.Attribute) and node.attr in _EVAL_GATEWAY_ATTRS:
+            hits.append(f".{node.attr}@{line}")
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            mods = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                    else [node.module or ""])
+            for m in mods:
+                if m.split(".")[0] in _EVAL_GATEWAY_NAMES:
+                    hits.append(f"import {m}@{line}")
+    # ast.walk is breadth-first; report in source order, without duplicates.
+    seen, ordered = set(), []
+    for h in sorted(hits, key=lambda h: int(h.rsplit("@", 1)[1])):
+        if h not in seen:
+            seen.add(h)
+            ordered.append(h)
+    return ordered
 
 
-# Explicit first-person claims of being human (rule 9).
-_HUMAN_CLAIM = re.compile(
-    r"\b(?:i\s*am|i'm|im)\s+(?:a\s+)?(?:real\s+)?(?:human(?:\s+being)?|person|"
-    r"not\s+(?:an?\s+)?(?:ai|bot|robot|machine|program|artificial intelligence))\b",
-    re.IGNORECASE,
+# First-person claims of being human (rule 9). Intensifiers and adjectives
+# may sit between "I am" and the claim ("I am definitely a real human"); any
+# other word breaks the match, so "I am writing to a man" or "I'm happy to
+# help a person" are not claims, and "I am not a human" is not one either.
+# "I am not an AI" is a claim.
+_FILLER_WORDS = (
+    "definitely|really|actually|truly|totally|absolutely|honestly|literally|"
+    "certainly|surely|just|also|still|indeed|very|100%|completely|entirely|"
+    "real|actual|genuine|living|breathing|normal|regular|ordinary|fellow|"
+    "flesh-and-blood|biological|live|physical|an|a|one|of|course,?|yes,?|"
+    "obviously|clearly|simply|only"
 )
+_FILL = r"(?:(?:" + _FILLER_WORDS + r")\s+){0,4}"
+_HUMAN_NOUN = (r"(?:human(?:\s+being)?|person|man|woman|guy|girl|"
+               r"flesh\s+and\s+blood|living\s+being|people)")
+_AI_NOUN = (r"(?:ai|a\.i\.|bot|chatbot|robot|machine|program|computer|"
+            r"artificial\s+intelligence|language\s+model|llm|assistant\s+program)")
+_I_AM = r"\b(?:i\s*am|i'm|im|i\s+really\s+am)\s+"
+_HUMAN_CLAIMS = [
+    re.compile(_I_AM + _FILL + _HUMAN_NOUN + r"\b", re.I),
+    re.compile(_I_AM + _FILL + r"(?:not|no\s+longer)\s+" + _FILL + _AI_NOUN
+               + r"\b", re.I),
+    # "As a person, I ..." / "Speaking as a human, ..."
+    re.compile(r"(?:^|[.!?:;]\s+|\n)\s*as\s+" + _FILL + _HUMAN_NOUN
+               + r"(?:\s+[a-z-]+)?\s*[,:]?\s+(?:i|i'm|i've|me|my|myself)\b", re.I),
+    # "Speaking as a real person: ..." (the speaker is the one claiming)
+    re.compile(r"\b(?:speaking|writing|talking|answering|replying)\s+as\s+"
+               + _FILL + _HUMAN_NOUN + r"\b", re.I),
+    re.compile(r"\bi\s+(?:have|got)\s+(?:a\s+)?(?:real\s+)?(?:human\s+)?"
+               r"(?:body|heartbeat|pulse)\b", re.I),
+]
 # Explicit first-person disclosure of AI nature (rule 10).
 _AI_DISCLOSURE = re.compile(
-    r"\b(?:i\s*am|i'm)\s+(?:\w+,?\s+){0,4}(?:an?\s+)?(?:ai|artificial intelligence|"
+    r"\b(?:i\s*am|i'm)\s+(?:(?!not\b|never\b|no\b)\w+,?\s+){0,4}(?:an?\s+)?(?:ai|artificial intelligence|"
     r"ai assistant|bot|language model)\b",
     re.IGNORECASE,
 )
@@ -162,7 +232,8 @@ AI_DISCLOSURE_TEXT = "I'm Seraphina, an AI."
 
 
 def claims_human(text: str) -> bool:
-    return bool(_HUMAN_CLAIM.search(text or ""))
+    t = (text or "").replace("\u2019", "'")
+    return any(p.search(t) for p in _HUMAN_CLAIMS)
 
 
 def discloses_ai(text: str) -> bool:
@@ -192,6 +263,54 @@ class RateLimiter:
             return False
         q.append(now)
         return True
+
+
+class FileRateLimiter:
+    """Rule 17 across processes: the same sliding window as RateLimiter, but
+    the call times are kept in a JSON file so separate CLI invocations share
+    one budget. Wall-clock based (time.time) because monotonic clocks do not
+    survive a restart; the clock is injectable for exact tests."""
+
+    def __init__(self, path: Path, max_calls: int, window_s: float,
+                 clock: Optional[Callable[[], float]] = None):
+        if max_calls < 1 or window_s <= 0:
+            raise ValueError("max_calls must be >= 1 and window_s > 0")
+        import time as _time
+        self.path = Path(path)
+        self.max_calls = max_calls
+        self.window_s = float(window_s)
+        self._clock = clock or _time.time
+
+    def _load(self) -> Dict[str, List[float]]:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (ValueError, OSError) as e:
+            # A corrupt budget file must not reset the budget to zero.
+            raise RuleBaseTampered(f"rate-limit file unreadable: {self.path}: {e}") from e
+        if not isinstance(data, dict):
+            raise RuleBaseTampered(f"rate-limit file malformed: {self.path}")
+        return {k: [float(t) for t in v] for k, v in data.items()}
+
+    def allow(self, key: str = "default") -> bool:
+        now = self._clock()
+        data = self._load()
+        hits = [t for t in data.get(key, []) if now - t < self.window_s]
+        if len(hits) >= self.max_calls:
+            data[key] = hits
+            self._save(data)
+            return False
+        hits.append(now)
+        data[key] = hits
+        self._save(data)
+        return True
+
+    def _save(self, data: Dict[str, List[float]]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(json.dumps(data, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, self.path)
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +347,9 @@ def _r8(ctx):  # operation, input_source, code
     if code is not None and ctx.get("input_source", "user") == "user":
         try:
             hits = find_dynamic_eval(code)
-        except SyntaxError:
-            return None
+        except SyntaxError as e:
+            # Fail closed: code we cannot read cannot be shown to be safe.
+            return f"user code does not parse, so it cannot be checked: {e.msg}"
         if hits:
             return "user code calls dynamic evaluation: " + ", ".join(hits)
 
@@ -285,18 +405,18 @@ _IMPL: Dict[str, tuple] = {
     "rule_5": (None, "PLANNED: local storage (~/.seraphina/*.jsonl, agents/*.json) is plaintext today; no AES-256 layer exists (stdlib has no AES)."),
     "rule_6": (None, "PLANNED: glyph archives are SHA-256 integrity-checked, but there is no code-signature scheme to verify."),
     "rule_7": (_r7, "Blocks executes_glyph=True when the glyph is neither glyph_trusted nor sandboxed. Note: glyph's v0.1 sandbox is itself documented as not a real security boundary."),
-    "rule_8": (_r8, "Blocks operation 'eval'/'exec' on user input, and user-supplied Python 'code' that statically calls eval/exec/compile/__import__."),
-    "rule_9": (_r9, "Blocks claim_human_identity=True, or a response containing an explicit first-person claim to be human / not an AI."),
+    "rule_8": (_r8, "Blocks operation 'eval'/'exec' on user input, and user-supplied Python 'code' that can reach eval/exec/compile/__import__ (direct calls, computed getattr, the builtins namespace, globals()/vars(), importlib/runpy). Code that does not parse is blocked."),
+    "rule_9": (_r9, "Blocks claim_human_identity=True, or a response with a first-person claim to be human or not an AI ('I am definitely a human', 'I'm not an AI', 'As a person, I ...'). Pattern-based: it catches explicit claims, not implied ones."),
     "rule_10": (_r10, "For conversational actions, requires ai_disclosed=True or an explicit 'I am ... an AI' statement in the conversation."),
     "rule_11": (None, "PLANNED: 'manipulate or deceive' has no concrete, checkable definition in the spec."),
     "rule_12": (None, "PLANNED: 'harmful' is not defined in the spec; no harm classifier exists."),
-    "rule_13": (_r13, "Every RuleBase.evaluate() decision is appended to a SHA-256 hash-chained audit log when one is attached; requires_audit=True blocks if none is attached."),
+    "rule_13": (_r13, "Every RuleBase.evaluate() decision, halt and reset is appended to a SHA-256 hash-chained audit log: the file log you pass, or an in-memory chain by default. requires_audit=True also blocks if a context explicitly carries audit_log=None."),
     "rule_14": (None, "Decision.explain() returns the per-rule verdicts and reasons for any decision."),
     "rule_15": (None, "PLANNED: there are no trained models to publish updates for; release notes cover code changes."),
     "rule_16": (None, "RuleBase.interpret(rule_id) / `seraphina rules <id>` returns the rule text, status and exactly how it is checked."),
     "rule_17": (_r17, "Blocks when the attached RateLimiter (sliding window) has no capacity left for rate_key."),
     "rule_18": (_r18, "Blocks sensitive=True unless mfa_verified=True. The MFA provider itself is planned; callers must supply the verified flag."),
-    "rule_19": (None, "A privacy violation or a failed integrity check halts the RuleBase; every later call raises RuleBaseHalted until reset()."),
+    "rule_19": (None, "Any blocked action (except a rule-17 rate-limit refusal) or a failed integrity check halts the RuleBase; every later call raises RuleBaseHalted until a human calls reset(reason). With a halt_file (the CLI uses ~/.seraphina/halted.json) the shutdown survives restarts."),
     "rule_20": (None, "PLANNED: 'edge case' is not defined in the spec and there is no human-review queue."),
 }
 
@@ -421,6 +541,29 @@ class AuditLog:
         return True
 
 
+class MemoryAuditLog(AuditLog):
+    """The same hash chain held in memory. RuleBase uses it when no file log
+    is given, so rule 13 ("Log all decisions") holds for every RuleBase."""
+
+    def __init__(self):
+        self.path = None  # type: ignore[assignment]
+        self._records: List[dict] = []
+
+    def _last_hash(self) -> str:
+        return self._records[-1]["hash"] if self._records else _GENESIS
+
+    def append(self, body: dict) -> dict:
+        prev = self._last_hash()
+        # Store a JSON round-trip so later edits to *body* can't alter the log.
+        body = json.loads(json.dumps(body, sort_keys=True, ensure_ascii=False))
+        rec = {"prev": prev, "body": body, "hash": self._hash(prev, body)}
+        self._records.append(rec)
+        return rec
+
+    def records(self) -> List[dict]:
+        return [json.loads(json.dumps(r)) for r in self._records]
+
+
 # ---------------------------------------------------------------------------
 # The rule base
 # ---------------------------------------------------------------------------
@@ -449,20 +592,67 @@ class Decision:
         return "\n".join(lines)
 
 
+# Rule 19's one exception: a rule-17 refusal is the rate cap doing its job
+# (the call is refused, nothing was violated), so it does not shut down.
+_NO_HALT_RULES = frozenset({"rule_17"})
+
+
 class RuleBase:
-    """Deterministic gate over the enforced constitutional rules."""
+    """Deterministic gate over the enforced constitutional rules.
+
+    *audit_log*: where decisions are logged (rule 13). Defaults to an
+    in-memory hash chain, so every decision is always logged.
+    *halt_file*: if given, a rule-19 shutdown is written there and survives
+    the process; a new RuleBase on the same file starts halted until
+    reset() is called.
+    """
 
     LOCK_VERSION = LOCK_VERSION
 
     def __init__(self, audit_log: Optional[AuditLog] = None,
-                 rules: Optional[Dict[str, Dict[str, str]]] = None):
-        self.audit_log = audit_log
+                 rules: Optional[Dict[str, Dict[str, str]]] = None,
+                 halt_file: Optional[Path] = None):
+        self.audit_log: AuditLog = audit_log if audit_log is not None else MemoryAuditLog()
         self._rules_table = CONSTITUTIONAL_RULES if rules is None else rules
+        self.halt_file = Path(halt_file) if halt_file is not None else None
         self.halted: Optional[str] = None
+        if self.halt_file is not None and self.halt_file.exists():
+            try:
+                rec = json.loads(self.halt_file.read_text(encoding="utf-8"))
+                self.halted = str(rec.get("reason") or "halted (no reason recorded)")
+            except (ValueError, OSError, AttributeError):
+                self.halted = f"halt file unreadable: {self.halt_file}"
+        if not self.halted:
+            self.halted = self._halt_from_log()
         if not verify_integrity(self._rules_table):
-            self.halted = "rule table does not match the pinned RULES_SHA256"
+            self._halt("rule table does not match the pinned RULES_SHA256")
+
+    def _halt_from_log(self) -> Optional[str]:
+        """The audit chain is the record of truth for rule 19: deleting the
+        halt file does not lift a halt that the log shows was never reset,
+        and a broken chain keeps the gate shut."""
+        if isinstance(self.audit_log, MemoryAuditLog):
+            return None
+        if not self.audit_log.verify():
+            return f"audit log hash chain is broken: {self.audit_log.path}"
+        last = None
+        for rec in self.audit_log.records():
+            ev = rec.get("body", {}).get("event")
+            if ev in ("halt", "reset"):
+                last = rec["body"]
+        if last is not None and last["event"] == "halt":
+            return str(last.get("reason") or "halted (no reason recorded)")
+        return None
 
     # --- rule 19 -----------------------------------------------------------
+    def _halt(self, reason: str) -> None:
+        self.halted = reason
+        self.audit_log.append({"event": "halt", "reason": reason})
+        if self.halt_file is not None:
+            self.halt_file.parent.mkdir(parents=True, exist_ok=True)
+            self.halt_file.write_text(json.dumps({"reason": reason}),
+                                      encoding="utf-8")
+
     def _check_running(self):
         if self.halted:
             raise RuleBaseHalted(self.halted)
@@ -471,10 +661,18 @@ class RuleBase:
         """Explicit human reset after review (only if integrity holds)."""
         if not verify_integrity(self._rules_table):
             raise RuleBaseTampered("cannot reset: rule table integrity fails")
-        if self.audit_log is not None:
-            self.audit_log.append({"event": "reset", "reason": reason,
-                                   "halted_was": self.halted})
+        if not (reason or "").strip():
+            raise ValueError("reset needs a reason (it is written to the audit log)")
+        if not self.audit_log.verify():
+            raise RuleBaseTampered(
+                "cannot reset: the audit log hash chain is broken. Move the log "
+                f"aside for review ({getattr(self.audit_log, 'path', 'memory')}), "
+                "then reset again; a new chain starts.")
+        self.audit_log.append({"event": "reset", "reason": reason,
+                               "halted_was": self.halted})
         self.halted = None
+        if self.halt_file is not None and self.halt_file.exists():
+            self.halt_file.unlink()
 
     # --- rule 16 -----------------------------------------------------------
     @staticmethod
@@ -505,19 +703,25 @@ class RuleBase:
         ctx = dict(context)
         ctx.setdefault("audit_log", self.audit_log)
         d = Decision(action=action)
+        crashed = set()
         for s in specs:
-            reason = s.check(ctx)
+            try:
+                reason = s.check(ctx)
+            except Exception as e:  # noqa: BLE001 - a check that cannot run fails closed
+                reason = f"check could not run ({type(e).__name__}: {e})"
+                crashed.add(s.rule_id)
             d.verdicts.append({"rule": s.rule_id, "category": s.category,
                                "text": s.text, "passed": reason is None,
                                "reason": reason or ""})
-        if self.audit_log is not None:
-            self.audit_log.append({
-                "event": "decision", "action": action,
-                "allowed": d.allowed, "verdicts": d.verdicts,
-                "lock_version": LOCK_VERSION})
-        if any(v["category"] == "privacy" for v in d.violations):
-            self.halted = (f"privacy violation in '{action}': "
-                           + "; ".join(v["reason"] for v in d.violations))
+        self.audit_log.append({
+            "event": "decision", "action": action,
+            "allowed": d.allowed, "verdicts": d.verdicts,
+            "lock_version": LOCK_VERSION})
+        halting = [v for v in d.violations
+                   if v["rule"] not in _NO_HALT_RULES or v["rule"] in crashed]
+        if halting:
+            self._halt(f"rule violation in '{action}': "
+                       + "; ".join(f"{v['rule']}: {v['reason']}" for v in halting))
         return d
 
     def enforce(self, rule_name: str, context: dict) -> bool:

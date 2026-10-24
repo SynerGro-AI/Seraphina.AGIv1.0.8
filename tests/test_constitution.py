@@ -3,7 +3,6 @@ import copy
 import json
 import re
 import unittest
-from pathlib import Path
 
 from seraphina import constitution as C
 from seraphina.constitution import (
@@ -109,7 +108,7 @@ class EnforcedRuleTest(unittest.TestCase):
         self.check("rule_8", {"code": "print(len('x'))"}, {"code": "x = 1\ny = eval(input())"})
         self.check("rule_8", {"code": "import math"}, {"code": "import os\nos.system and __import__('os')"})
         self.assertEqual(C.find_dynamic_eval("a=1\nexec('b')\nbuiltins.eval('c')"),
-                         ["exec@2", "eval@3"])
+                         ["exec@2", "eval@3", "builtins@3"])
 
     def test_rule_9_impersonation(self):
         self.check("ethics.never_impersonate", {"response": "I'm Seraphina, an AI."},
@@ -124,7 +123,10 @@ class EnforcedRuleTest(unittest.TestCase):
         self.assertTrue(RuleBase().enforce("rule_10", {}))  # not a conversation
 
     def test_rule_13_requires_audit_log(self):
-        self.check("rule_13", {"requires_audit": False}, {"requires_audit": True})
+        # A RuleBase always has a log (in-memory by default), so only a
+        # context that explicitly strips it fails.
+        self.check("rule_13", {"requires_audit": True},
+                   {"requires_audit": True, "audit_log": None})
 
     def test_rule_17_rate_limit(self):
         now = [0.0]
@@ -167,25 +169,20 @@ class EvaluateTest(TempDirMixin, unittest.TestCase):
         self.assertEqual([v["rule"] for v in d.violations], ["rule_8"])
         self.assertIn("[FAIL] rule_8", d.explain())
 
-    def test_rule_19_privacy_violation_halts_until_reset(self):
+    def test_rule_19_violation_halts_until_reset(self):
         log = AuditLog(self.tmp / "a.jsonl")
         rb = RuleBase(audit_log=log)
         d = rb.evaluate("collect", {"collects_user_data": True})
         self.assertFalse(d.allowed)
-        self.assertIn("privacy violation", rb.halted)
+        self.assertIn("rule_1", rb.halted)
         with self.assertRaises(RuleBaseHalted):
             rb.evaluate("next", {})
         rb.reset("reviewed by operator")
         self.assertIsNone(rb.halted)
         self.assertTrue(rb.evaluate("next", {}).allowed)
         events = [r["body"]["event"] for r in log.records()]
-        self.assertEqual(events, ["decision", "reset", "decision"])
+        self.assertEqual(events, ["decision", "halt", "reset", "decision"])
         self.assertTrue(log.verify())
-
-    def test_non_privacy_violation_does_not_halt(self):
-        rb = RuleBase()
-        rb.evaluate("x", {"operation": "eval"})
-        self.assertIsNone(rb.halted)
 
     def test_rule_16_interpret(self):
         r = RuleBase.interpret("security.no_eval")

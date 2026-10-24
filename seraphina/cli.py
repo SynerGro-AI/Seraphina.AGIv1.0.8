@@ -18,7 +18,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -29,9 +28,11 @@ from . import __version__
 from .core import RomanWheelTriad
 from .rule_base import OctaRuleBase  # noqa: F401
 from .constitution import (
-    CONSTITUTIONAL_RULES, RULES_SHA256, AuditLog, RuleBase, enforced_rules,
-    planned_rules, rules_digest, verify_integrity,
+    AI_DISCLOSURE_TEXT, CONSTITUTIONAL_RULES, RULES_SHA256, AuditLog,
+    RuleBase, RuleBaseTampered, enforced_rules, planned_rules, rules_digest,
+    verify_integrity,
 )
+from . import gate as _gate
 
 
 # --- paths -------------------------------------------------------------------
@@ -40,7 +41,6 @@ SERAPHINA_HOME = Path(os.environ.get("SERAPHINA_HOME", Path.home() / ".seraphina
 WIZARD_DIR = SERAPHINA_HOME / "wizard"
 AGENTS_DIR = SERAPHINA_HOME / "agents"
 MEMORY_FILE = WIZARD_DIR / "memory.jsonl"
-HISTORY_FILE = WIZARD_DIR / "history.jsonl"
 AUDIT_FILE = SERAPHINA_HOME / "audit.jsonl"   # constitutional rule 13
 
 
@@ -61,15 +61,16 @@ def _append(path: Path, record: dict) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def remember(text: str) -> None:
+def remember(text: str) -> int:
     _append(MEMORY_FILE, {"ts": _now(), "note": text})
     print("  remembered.")
+    return 0
 
 
-def recall(query: str = "") -> None:
+def recall(query: str = "") -> int:
     if not MEMORY_FILE.exists():
         print("  (no memory yet)")
-        return
+        return 0
     hits: List[dict] = []
     with MEMORY_FILE.open(encoding="utf-8") as f:
         for line in f:
@@ -81,9 +82,10 @@ def recall(query: str = "") -> None:
                 hits.append(rec)
     if not hits:
         print("  (no matches)")
-        return
+        return 0
     for rec in hits[-20:]:
         print(f"  {rec['ts']}  {rec['note']}")
+    return 0
 
 
 # --- agent builder ----------------------------------------------------------
@@ -152,7 +154,7 @@ def create_agent(name: Optional[str] = None) -> int:
     print(f"  created agent: {name}  ({slug})")
     print(f"  -> {agent_path}")
     print(f"  use it:  seraphina -c \"agent {slug} hello\"")
-    print(f"  list:    seraphina -c \"list agents\"")
+    print("  list:    seraphina -c \"list agents\"")
     return 0
 
 
@@ -206,8 +208,8 @@ def agent_speak(slug: str, message: str) -> int:
                 ts = datetime.fromisoformat(m["ts"])
                 if (now_dt - ts).total_seconds() <= secs:
                     keep.append(m)
-            except Exception:
-                keep.append(m)
+            except (KeyError, TypeError, ValueError):
+                keep.append(m)  # no usable timestamp: never silently forget it
         data["memories"] = keep
 
     agent_path.write_text(json.dumps(data, indent=2, ensure_ascii=False),
@@ -243,7 +245,6 @@ def glyph(*args: str, dry_run: bool = False) -> int:
     cmd = [sys.executable, "-m", "glyph", *args]
     display = "python -m glyph " + " ".join(shlex.quote(a) for a in args)
     print(f"  > {display}")
-    _append(HISTORY_FILE, {"ts": _now(), "kind": "cmd", "cmd": display})
     if dry_run:
         print("  (dry-run, skipped)")
         return 0
@@ -277,7 +278,9 @@ def resolve_geometry_for_value(n: int) -> dict:
 
 # --- triad ------------------------------------------------------------------
 
-def triad(message: str) -> None:
+def triad(message: str) -> int:
+    """Run a Triad pass. Exit code 0 whether or not consensus is reached
+    (no consensus is a result, not an error)."""
     result = RomanWheelTriad().process(message)
     wheels = result["wheels"]
     # Constitutional rule 13: every Triad decision goes to the hash-chained log.
@@ -290,6 +293,7 @@ def triad(message: str) -> None:
     print(f"  consensus: {result['consensus']}")
     print(f"  response:  {result['response']}")
     print(f"  time:      {result['processing_time']}s")
+    return 0
 
 
 # --- constitutional rules -----------------------------------------------------
@@ -304,8 +308,29 @@ def verify_rules() -> int:
     n = len(log.records())
     ok_log = log.verify()
     print(f"  audit log    : {'OK' if ok_log else 'BROKEN CHAIN'} ({n} records, {AUDIT_FILE})")
+    # The RuleBase derives the halt from the halt file AND the audit chain,
+    # so deleting halted.json does not make this report "running".
+    halted = halted_reason()
+    print(f"  rule 19 halt : {'HALTED: ' + halted if halted else 'running'}")
     print(f"  enforced     : {len(enforced_rules())}/20   planned: {', '.join(planned_rules())}")
-    return 0 if (ok_rules and ok_log) else 1
+    return 0 if (ok_rules and ok_log and not halted) else 1
+
+
+def reset_rules(reason: str) -> int:
+    """`seraphina --reset-rules "<reason>"`: a person clears a rule-19 halt
+    after reviewing the audit log. The reason is logged."""
+    rb = _gate.rule_base()
+    if not rb.halted:
+        print("  not halted; nothing to reset.")
+        return 0
+    print(f"  halted because: {rb.halted}")
+    try:
+        rb.reset(reason)
+    except (RuleBaseTampered, ValueError) as e:
+        print(f"  reset refused: {e}", file=sys.stderr)
+        return 1
+    print("  reset logged; Seraphina is running again.")
+    return 0
 
 
 def export_audit(dest: Optional[str]) -> int:
@@ -323,31 +348,78 @@ def export_audit(dest: Optional[str]) -> int:
     return 0
 
 
-def show_rules(rule: str = "") -> None:
+def show_rules(rule: str = "") -> int:
     """Constitutional rule 16: rule interpretations on request."""
     if rule:
         try:
             r = RuleBase.interpret(rule)
         except KeyError as e:
-            print(f"  {e.args[0]}")
-            return
+            print(f"  {e.args[0]}", file=sys.stderr)
+            return 1
         print(f"  {r['rule']} [{r['category']}, {r['status']}]: {r['text']}")
         print(f"  penalty: {r['penalty']}")
         print(f"  how checked: {r['how_checked']}")
-        return
+        return 0
     for cat, rules in CONSTITUTIONAL_RULES.items():
         print(f"  {cat}  (penalty: {rules['penalty']})")
         for rid, text in rules.items():
             if rid != "penalty":
                 st = RuleBase.interpret(rid)["status"]
                 print(f"    {rid:<8} {st:<9} {text}")
+    return 0
 
 
-def plan_grok(message: str) -> None:
+GROK_SYSTEM_PROMPT = (
+    "You are a planning assistant for Seraphina.AGI, a deterministic Roman "
+    "Wheel Triad system. Produce a short, numbered build plan. No code "
+    "execution. You are an AI: never claim to be a human.")
+
+
+def _grok_request_context(endpoint: str) -> dict:
+    """What the outgoing plan-grok call does, declared for the rule gate."""
+    return {
+        # The message is user text sent to a third party (xAI). The user
+        # typed plan-grok and supplied their own key: that is the consent.
+        "collects_user_data": True,
+        "user_consent": True,
+        "transmits_pii": True,          # assume user text may contain PII
+        "encrypted": endpoint.lower().startswith("https://"),
+        "rate_limiter": _gate.grok_rate_limiter(),
+        "rate_key": "plan_grok",
+        "requires_audit": True,
+    }
+
+
+def gate_grok_reply(message: str, reply: str) -> list:
+    """Gate a Grok reply before it is shown. Returns the lines to print
+    (disclosure first). Raises gate.Blocked if the reply may not be shown."""
+    header = f"{AI_DISCLOSURE_TEXT} The plan below was written by Grok, xAI's AI model."
+    _gate.check("plan_grok.reply", {
+        "response": reply,                 # rule 9: no human claims
+        "conversation": [header],          # rule 10: AI nature disclosed
+        "requires_audit": True,
+    })
+    # Same Triad pass every other Seraphina output gets (integrity + mercy).
+    result = RomanWheelTriad().process(message, candidate=reply)
+    AuditLog(AUDIT_FILE).append({
+        "event": "triad", "ts": _now(), "action": "plan_grok.reply",
+        "consensus": result["consensus"],
+        "reasons": result["wheels"]["verification"]["reasons"]
+                   + result["wheels"]["mercy_civ"]["reasons"],
+    })
+    if not result["consensus"]:
+        raise _gate.Blocked("Triad did not reach consensus on the reply: "
+                            + str(result["response"]))
+    return [header, "--- grok plan ---", *reply.splitlines()]
+
+
+def plan_grok(message: str) -> int:
     """Optional: ask xAI Grok for a planning pass. Requires SERAPHINA_GROK_API_KEY.
 
-    Uses stdlib urllib so no extra dependency is installed; the [grok]
-    extra in pyproject.toml exists only to signal explicit user opt-in.
+    The request and the reply both go through the constitutional gate
+    (seraphina/gate.py). Uses stdlib urllib, so no extra dependency is
+    installed; the [grok] extra in pyproject.toml signals explicit opt-in.
+    Exit codes: 0 plan shown, 1 error, 3 blocked by the rule gate.
     """
     import json as _json
     import urllib.request
@@ -356,23 +428,32 @@ def plan_grok(message: str) -> None:
     key = (os.environ.get("SERAPHINA_GROK_API_KEY", "")
            or os.environ.get("XAI_API_KEY", "")).strip()
     if not key:
-        print("  plan-grok: no API key found (checked SERAPHINA_GROK_API_KEY, XAI_API_KEY).")
-        print("  set it first:")
-        print("    PowerShell: $env:SERAPHINA_GROK_API_KEY = 'xai-...'")
-        print("    bash:       export SERAPHINA_GROK_API_KEY=xai-...")
-        print("  then retry:   seraphina -c \"plan-grok <your message>\"")
-        return
+        print("  plan-grok: no API key found (checked SERAPHINA_GROK_API_KEY, XAI_API_KEY).",
+              file=sys.stderr)
+        print("  set it first:", file=sys.stderr)
+        print("    PowerShell: $env:SERAPHINA_GROK_API_KEY = 'xai-...'", file=sys.stderr)
+        print("    bash:       export SERAPHINA_GROK_API_KEY=xai-...", file=sys.stderr)
+        print("  then retry:   seraphina -c \"plan-grok <your message>\"", file=sys.stderr)
+        return 1
 
     endpoint = os.environ.get("SERAPHINA_GROK_ENDPOINT",
                               "https://api.x.ai/v1/chat/completions")
     model = os.environ.get("SERAPHINA_GROK_MODEL", "grok-4-latest")
+    try:
+        ctx = _grok_request_context(endpoint)
+        _gate.check("plan_grok.request", ctx)
+    except ValueError as e:
+        print(f"  plan-grok: {e}", file=sys.stderr)
+        return 1
+    except (_gate.Blocked, RuleBaseTampered) as e:
+        print("  plan-grok blocked by the constitutional rules:", file=sys.stderr)
+        print("  " + str(e).replace("\n", "\n  "), file=sys.stderr)
+        return 3
+
     payload = {
         "model": model,
         "messages": [
-            {"role": "system",
-             "content": "You are a planning assistant for Seraphina.AGI, a "
-                        "deterministic Roman Wheel Triad system. Produce a "
-                        "short, numbered build plan. No code execution."},
+            {"role": "system", "content": GROK_SYSTEM_PROMPT},
             {"role": "user", "content": message},
         ],
         "temperature": 0.2,
@@ -391,23 +472,41 @@ def plan_grok(message: str) -> None:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = _json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        print(f"  HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}")
-        return
+        print(f"  HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}", file=sys.stderr)
+        return 1
     except urllib.error.URLError as e:
-        print(f"  network error: {e.reason}")
-        return
-    except Exception as e:
-        print(f"  error: {e}")
-        return
+        print(f"  network error: {e.reason}", file=sys.stderr)
+        return 1
+    except (ValueError, OSError) as e:
+        print(f"  error: {e}", file=sys.stderr)
+        return 1
 
     try:
         text = data["choices"][0]["message"]["content"]
-    except Exception:
-        print(f"  unexpected response shape: {str(data)[:400]}")
-        return
-    print("  --- grok plan ---")
-    for line in text.splitlines():
+    except (KeyError, IndexError, TypeError):
+        print(f"  unexpected response shape: {str(data)[:400]}", file=sys.stderr)
+        return 1
+    if not isinstance(text, str):
+        print("  unexpected response: content is not text", file=sys.stderr)
+        return 1
+    try:
+        lines = gate_grok_reply(message, text)
+    except _gate.Blocked as e:
+        print("  Grok's reply was withheld by the constitutional rules:", file=sys.stderr)
+        print("  " + str(e).replace("\n", "\n  "), file=sys.stderr)
+        return 3
+    for line in lines:
         print(f"  {line}")
+    return 0
+
+
+def halted_reason() -> Optional[str]:
+    """Why rule 19 has Seraphina shut down, or None if she is running.
+    Fails closed: if the gate cannot even be read, she counts as halted."""
+    try:
+        return _gate.rule_base().halted
+    except Exception as e:  # noqa: BLE001 - an unreadable gate is a closed gate
+        return f"the rule gate could not be read ({type(e).__name__}: {e})"
 
 
 # --- intent router ----------------------------------------------------------
@@ -430,7 +529,10 @@ GLYPH PACKAGES (binary-native wasm)
   uninstall <name>           remove an installed glyph
   list                       list installed glyphs
   show <name>                manifest for an installed glyph
-  run <name> [export=E n=K]  run an installed glyph
+  run <name> [export=E n=K] [trusted]
+                             run an installed glyph. Code outside a real
+                             sandbox (python runtime) needs "trusted"
+                             (constitutional rule 7)
   history [N]                last N gate-ledger entries
   doctor                     environment health check
   bootstrap                  re-init the glyph environment
@@ -584,18 +686,18 @@ def _split_args(rest: str) -> list[str]:
     return parts
 
 
-def rwl_encode(args: list[str]) -> None:
+def rwl_encode(args: list[str]) -> int:
     from pathlib import Path as _P
     from .rwl import encode as _enc, info as _info, RWLError as _Err
-    from .rwl.codec import _resolve_language as _resolve, _ext_for as _ext  # type: ignore
+    from .rwl.codec import _resolve_language as _resolve  # type: ignore
     pos, kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl encode <src> [-o out.rwg] [lang=auto|python|js|...] [compress=on|off]")
-        return
+        print("  usage: rwl encode <src> [-o out.rwg] [lang=auto|python|js|...] [compress=on|off]", file=sys.stderr)
+        return 2
     src = _P(pos[0])
     if not src.is_file():
-        print(f"  rwl: not found: {src}")
-        return
+        print(f"  rwl: not found: {src}", file=sys.stderr)
+        return 1
     if kw.get("out"):
         out = _P(kw["out"])
     elif len(pos) >= 2:
@@ -606,8 +708,8 @@ def rwl_encode(args: list[str]) -> None:
     try:
         lang = _resolve(None if lang_arg == "auto" else lang_arg, src)
     except _Err as e:
-        print(f"  rwl: {e}")
-        return
+        print(f"  rwl: {e}", file=sys.stderr)
+        return 1
     compress = None
     if "compress" in kw:
         compress = kw["compress"].lower() in ("1", "true", "on", "yes")
@@ -620,25 +722,26 @@ def rwl_encode(args: list[str]) -> None:
     print(f"  -> {out}  ({len(blob)} B, lang={container.language}, "
           f"compressed={container.compressed})")
     print(f"  sha256(src): {container.sha256_hex}")
+    return 0
 
 
-def rwl_decode(args: list[str]) -> None:
+def rwl_decode(args: list[str]) -> int:
     from pathlib import Path as _P
     from .rwl import decode as _dec, RWLError as _Err
     from .rwl.codec import _ext_for as _ext  # type: ignore
     pos, kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl decode <file.rwg> [-o out_path]")
-        return
+        print("  usage: rwl decode <file.rwg> [-o out_path]", file=sys.stderr)
+        return 2
     src = _P(pos[0])
     if not src.is_file():
-        print(f"  rwl: not found: {src}")
-        return
+        print(f"  rwl: not found: {src}", file=sys.stderr)
+        return 1
     try:
         container, source = _dec(src.read_bytes())
     except _Err as e:
-        print(f"  rwl: decode failed: {e}")
-        return
+        print(f"  rwl: decode failed: {e}", file=sys.stderr)
+        return 1
     if kw.get("out"):
         out = _P(kw["out"])
     elif len(pos) >= 2:
@@ -655,43 +758,45 @@ def rwl_decode(args: list[str]) -> None:
     print(f"  decoded: {src}")
     print(f"  -> {out}  ({container.original_size} B, lang={container.language})")
     print(f"  sha256 verified: {container.sha256_hex}")
+    return 0
 
 
-def rwl_info(args: list[str]) -> None:
+def rwl_info(args: list[str]) -> int:
     from pathlib import Path as _P
     from .rwl import info as _info, RWLError as _Err
     pos, _kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl info <file.rwg>")
-        return
+        print("  usage: rwl info <file.rwg>", file=sys.stderr)
+        return 2
     src = _P(pos[0])
     if not src.is_file():
-        print(f"  rwl: not found: {src}")
-        return
+        print(f"  rwl: not found: {src}", file=sys.stderr)
+        return 1
     try:
         c = _info(src.read_bytes())
     except _Err as e:
-        print(f"  rwl: {e}")
-        return
+        print(f"  rwl: {e}", file=sys.stderr)
+        return 1
     print(f"  file       : {src}")
     print(f"  rwl version: {c.version}")
     print(f"  language   : {c.language}")
     print(f"  original   : {c.original_size} bytes")
     print(f"  payload    : {c.payload_size} bytes  (compressed={c.compressed})")
     print(f"  sha256     : {c.sha256_hex}")
+    return 0
 
 
-def rwl_wheel(args: list[str]) -> None:
+def rwl_wheel(args: list[str]) -> int:
     from pathlib import Path as _P
     from .rwl import decode as _dec, render_wheel_stream as _render, RWLError as _Err
     pos, kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl wheel <file.rwg | any file> [width=16] [limit=256]")
-        return
+        print("  usage: rwl wheel <file.rwg | any file> [width=16] [limit=256]", file=sys.stderr)
+        return 2
     src = _P(pos[0])
     if not src.is_file():
-        print(f"  rwl: not found: {src}")
-        return
+        print(f"  rwl: not found: {src}", file=sys.stderr)
+        return 1
     raw = src.read_bytes()
     # If it's an .rwg, render the *decoded source* bytes; else render raw bytes.
     if src.suffix.lower() == ".rwg":
@@ -699,41 +804,46 @@ def rwl_wheel(args: list[str]) -> None:
             c, raw = _dec(raw)
             print(f"  wheel view of {src.name}  (lang={c.language}, {c.original_size} B)")
         except _Err as e:
-            print(f"  rwl: {e}")
-            return
+            print(f"  rwl: {e}", file=sys.stderr)
+            return 1
     else:
         print(f"  wheel view of {src.name}  ({len(raw)} B)")
-    width = int(kw.get("width", "16"))
-    limit = int(kw.get("limit", "256"))
+    try:
+        width = int(kw.get("width", "16"))
+        limit = int(kw.get("limit", "256"))
+    except ValueError:
+        print("  rwl wheel: width and limit must be integers", file=sys.stderr)
+        return 2
     sample = raw[:limit]
     print(_render(sample, width=width))
     if len(raw) > limit:
         print(f"  ... {len(raw) - limit} more bytes ({len(raw)} total)")
+    return 0
 
 
-def rwl_translate(args: list[str]) -> None:
+def rwl_translate(args: list[str]) -> int:
     """rwl translate <src_file> --from py|js|ts --to py|js|ts [-o out]"""
     from pathlib import Path as _P
     from .rwl.ast_ir import translate as _translate
     pos, kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl translate <file> --from python --to js|ts|python [-o out]")
-        return
+        print("  usage: rwl translate <file> --from python --to js|ts|python [-o out]", file=sys.stderr)
+        return 2
     src = _P(pos[0])
     if not src.is_file():
-        print(f"  rwl: not found: {src}")
-        return
+        print(f"  rwl: not found: {src}", file=sys.stderr)
+        return 1
     from_lang = kw.get("from", None) or (src.suffix.lstrip(".") or "python")
     to_lang = kw.get("to", None)
     if not to_lang:
-        print("  rwl translate: --to <language> required  (python | js | ts)")
-        return
+        print("  rwl translate: --to <language> required  (python | js | ts)", file=sys.stderr)
+        return 2
     source = src.read_text(encoding="utf-8")
     try:
         result = _translate(source, from_lang, to_lang)
-    except Exception as exc:
-        print(f"  rwl translate error: {exc}")
-        return
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: any translate failure becomes exit 1 with the message
+        print(f"  rwl translate error: {exc}", file=sys.stderr)
+        return 1
     out_path = kw.get("out") or (pos[1] if len(pos) >= 2 else None)
     if out_path:
         _P(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -741,6 +851,7 @@ def rwl_translate(args: list[str]) -> None:
         print(f"  rwl: wrote {len(result)} chars → {out_path}")
     else:
         print(result)
+    return 0
 
 
 def _normalize(text: str) -> str:
@@ -758,89 +869,96 @@ def _normalize(text: str) -> str:
 
 
 
-def route(line: str, dry_run: bool) -> tuple[bool, bool]:
-    """Returns (stop, new_dry_run)."""
+def route(line: str, dry_run: bool) -> tuple[bool, bool, int]:
+    """Returns (stop, new_dry_run, exit_code). exit_code is 0 on success and
+    non-zero when the intent failed, was blocked, or was not understood."""
     raw = line.strip()
     if not raw:
-        return False, dry_run
-    _append(HISTORY_FILE, {"ts": _now(), "kind": "user", "text": raw})
+        return False, dry_run, 0
 
-    # --- greetings / chit-chat ---
-    if _GREETINGS.match(raw):
-        print("  Hi! I'm Seraphina, an AI assistant. Type 'help' to see what I can do,")
-        print("  or try: build glyph 179   |   list   |   triad hello world")
-        return False, dry_run
-
+    # --- read-only intents: allowed even while rule 19 has Seraphina halted ---
     if _HELP_PHRASES.match(raw):
         print(HELP_TEXT)
-        return False, dry_run
+        return False, dry_run, 0
 
     if _VERSION_PHRASES.match(raw):
         print(f"  seraphina {__version__}")
-        return False, dry_run
+        return False, dry_run, 0
 
     # Lowercase, drop filler, expand verb synonyms.
     t = _normalize(raw)
 
     if t in ("exit", "quit", "bye", "goodbye", "later", "done"):
-        return True, dry_run
+        return True, dry_run, 0
     if t == "help":
         print(HELP_TEXT)
-        return False, dry_run
+        return False, dry_run, 0
+
+    m = re.match(r"(?i)^\s*rules(?:\s+(\S+))?\s*$", raw)
+    if m:
+        rc = show_rules((m.group(1) or "").strip())
+        return False, dry_run, rc
+
+    # --- rule 19: everything below acts, so a halted Seraphina refuses ---
+    halted = halted_reason()
+    if halted:
+        print("  " + _gate.halt_message(halted), file=sys.stderr)
+        return False, dry_run, 3
+
+    # --- greetings / chit-chat ---
+    if _GREETINGS.match(raw):
+        print("  Hi! I'm Seraphina, an AI assistant. Type 'help' to see what I can do,")
+        print("  or try: build glyph 179   |   list   |   triad hello world")
+        return False, dry_run, 0
 
     m = re.fullmatch(r"dry\s+(on|off|true|false|yes|no)", t)
     if m:
         nd = m.group(1) in ("on", "true", "yes")
         print(f"  dry-run: {nd}")
-        return False, nd
+        return False, nd, 0
 
     # --- content-bearing commands: extract payload from RAW to preserve case ---
 
     m = re.match(r"(?i)^\s*remember\s+(.+)$", raw)
     if m:
-        remember(m.group(1).strip())
-        return False, dry_run
+        rc = remember(m.group(1).strip())
+        return False, dry_run, rc
 
     m = re.match(r"(?i)^\s*recall(?:\s+(.*))?$", raw)
     if m:
-        recall((m.group(1) or "").strip())
-        return False, dry_run
-
-    m = re.match(r"(?i)^\s*rules(?:\s+(\S+))?\s*$", raw)
-    if m:
-        show_rules((m.group(1) or "").strip())
-        return False, dry_run
+        rc = recall((m.group(1) or "").strip())
+        return False, dry_run, rc
 
     m = re.match(r"(?i)^\s*triad\s+(.+)$", raw)
     if m:
-        triad(m.group(1).strip())
-        return False, dry_run
+        rc = triad(m.group(1).strip())
+        return False, dry_run, rc
 
     # --- optional Grok planner ---
     m = re.match(r"(?i)^\s*(?:plan-grok|grok-plan|grok)\s+(.+)$", raw)
     if m:
-        plan_grok(m.group(1).strip())
-        return False, dry_run
+        rc = plan_grok(m.group(1).strip())
+        return False, dry_run, rc
 
     # --- agent builder ---
     m = re.match(r"(?i)^\s*(?:create|new|build|make)[\s-]?agent(?:\s+(.+))?$", raw)
     if m:
-        create_agent(m.group(1).strip() if m.group(1) else None)
-        return False, dry_run
+        rc = create_agent(m.group(1).strip() if m.group(1) else None)
+        return False, dry_run, rc
 
     if re.fullmatch(r"(?i)\s*(?:list|show)\s+agents?\s*", raw):
-        list_agents()
-        return False, dry_run
+        rc = list_agents()
+        return False, dry_run, rc
 
     m = re.match(r"(?i)^\s*agent\s+(\S+)\s+recall(?:\s+(.+))?$", raw)
     if m:
-        agent_recall(m.group(1), (m.group(2) or "").strip())
-        return False, dry_run
+        rc = agent_recall(m.group(1), (m.group(2) or "").strip())
+        return False, dry_run, rc
 
     m = re.match(r"(?i)^\s*agent\s+(\S+)\s+(.+)$", raw)
     if m:
-        agent_speak(m.group(1), m.group(2).strip())
-        return False, dry_run
+        rc = agent_speak(m.group(1), m.group(2).strip())
+        return False, dry_run, rc
 
     # --- build glyph <N>  (tolerant: "build me a glyph for 179", "make glyph 100") ---
     m = re.fullmatch(r"(?:build|make|create|forge)\s+(?:glyph\s+)?(?:for\s+)?(\d+)", t)
@@ -859,12 +977,12 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
             ok = "y"
         if ok and not ok.startswith("y"):
             print("  cancelled.")
-            return False, dry_run
-        glyph("forge", name,
-              "--sides", str(g["sides"]), "--points", str(g["points"]),
-              "--dots", str(g["dots"]), "--intersections", str(g["intersections"]),
-              "--spirals", str(g["spirals"]), dry_run=dry_run)
-        return False, dry_run
+            return False, dry_run, 1
+        rc = glyph("forge", name,
+                   "--sides", str(g["sides"]), "--points", str(g["points"]),
+                   "--dots", str(g["dots"]), "--intersections", str(g["intersections"]),
+                   "--spirals", str(g["spirals"]), dry_run=dry_run)
+        return False, dry_run, rc
 
     m = re.fullmatch(r"forge\s+(\S+)(.*)", t)
     if m:
@@ -875,30 +993,30 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         for k in ("sides", "points", "dots", "intersections", "spirals"):
             if k in kw:
                 cli += [f"--{k}", str(kw[k])]
-        glyph(*cli, dry_run=dry_run)
-        return False, dry_run
+        rc = glyph(*cli, dry_run=dry_run)
+        return False, dry_run, rc
 
     if t in ("list", "freeze", "doctor", "bootstrap"):
-        glyph(t, dry_run=dry_run)
-        return False, dry_run
+        rc = glyph(t, dry_run=dry_run)
+        return False, dry_run, rc
 
     m = re.fullmatch(r"show\s+(\S+)", t)
-    if m: glyph("show", m.group(1), dry_run=dry_run); return False, dry_run
+    if m: return False, dry_run, glyph("show", m.group(1), dry_run=dry_run)
 
     # install/pack: take payload from RAW to preserve path case
     m = re.match(r"(?i)^\s*(?:please\s+)?install\s+(.+)$", raw)
-    if m: glyph("install", m.group(1).strip(), dry_run=dry_run); return False, dry_run
+    if m: return False, dry_run, glyph("install", m.group(1).strip(), dry_run=dry_run)
 
     m = re.match(r"(?i)^\s*(?:please\s+)?pack\s+(.+)$", raw)
-    if m: glyph("pack", m.group(1).strip(), dry_run=dry_run); return False, dry_run
+    if m: return False, dry_run, glyph("pack", m.group(1).strip(), dry_run=dry_run)
 
     m = re.fullmatch(r"uninstall\s+(\S+)", t)
-    if m: glyph("uninstall", m.group(1), dry_run=dry_run); return False, dry_run
+    if m: return False, dry_run, glyph("uninstall", m.group(1), dry_run=dry_run)
 
     m = re.fullmatch(r"history(?:\s+(\d+))?", t)
     if m:
         extra = ["--limit", m.group(1)] if m.group(1) else []
-        glyph("history", *extra, dry_run=dry_run); return False, dry_run
+        return False, dry_run, glyph("history", *extra, dry_run=dry_run)
 
     m = re.fullmatch(r"run\s+(\S+)(.*)", t)
     if m:
@@ -908,7 +1026,9 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         if em: cli += ["--export", em.group(1)]
         for am in re.finditer(r"(?:arg|n)\s*=\s*(-?\d+)", rest):
             cli += ["--arg", am.group(1)]
-        glyph(*cli, dry_run=dry_run); return False, dry_run
+        if re.search(r"\btrusted\b", rest):
+            cli.append("--trusted")
+        return False, dry_run, glyph(*cli, dry_run=dry_run)
 
     # plan: preserve raw text after the verb
     m = re.match(r"(?i)^\s*plan\s+(.+)$", raw)
@@ -920,7 +1040,7 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         print("    3. install the packed .glyph files")
         print("    4. compose them with `run` and verify under Triad consensus")
         print("  (no execution - real implementation requires concrete numeric targets.)")
-        return False, dry_run
+        return False, dry_run, 0
 
     # --- rwl: Roman Wheel Language codec -----------------------------------
     m = re.match(r"(?i)^\s*rwl\s+(encode|decode|info|wheel|translate)\b(.*)$", raw)
@@ -928,27 +1048,20 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
         action = m.group(1).lower()
         rest = m.group(2).strip()
         args = _split_args(rest)
-        if action == "encode":
-            rwl_encode(args)
-        elif action == "decode":
-            rwl_decode(args)
-        elif action == "info":
-            rwl_info(args)
-        elif action == "wheel":
-            rwl_wheel(args)
-        elif action == "translate":
-            rwl_translate(args)
-        return False, dry_run
+        handler = {"encode": rwl_encode, "decode": rwl_decode, "info": rwl_info,
+                   "wheel": rwl_wheel, "translate": rwl_translate}[action]
+        return False, dry_run, handler(args)
 
     # --- final fallback: suggest the closest known command ---
     first = t.split(" ", 1)[0] if t else ""
     candidates = [c.split(" ", 1)[0] for c in _KNOWN_COMMANDS]
     suggestion = difflib.get_close_matches(first, candidates, n=1, cutoff=0.6)
     if suggestion:
-        print(f"  hmm, not sure what '{raw}' means. did you mean: {suggestion[0]}?")
+        print(f"  hmm, not sure what '{raw}' means. did you mean: {suggestion[0]}?",
+              file=sys.stderr)
     else:
-        print("  unrecognized. type 'help' to see what I can do.")
-    return False, dry_run
+        print("  unrecognized. type 'help' to see what I can do.", file=sys.stderr)
+    return False, dry_run, 2
 
 
 # --- entry point ------------------------------------------------------------
@@ -962,6 +1075,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="check the constitutional rule table hash and the audit-log chain")
     p.add_argument("--export-audit", nargs="?", const="", default=None, metavar="FILE",
                    help="verify and export the decision audit log (stdout if no FILE)")
+    p.add_argument("--reset-rules", default=None, metavar="REASON",
+                   help="clear a rule-19 shutdown after review; REASON is logged")
     p.add_argument("rest", nargs=argparse.REMAINDER,
                    help="optional positional intent, e.g. 'seraphina create-agent'")
     args = p.parse_args(argv)
@@ -973,19 +1088,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         return verify_rules()
     if args.export_audit is not None:
         return export_audit(args.export_audit or None)
+    if args.reset_rules is not None:
+        return reset_rules(args.reset_rules)
 
     _ensure_dirs()
 
     if args.command:
-        route(args.command, args.dry_run)
-        return 0
+        return route(args.command, args.dry_run)[2]
 
     # Direct subcommands: `seraphina create-agent`, `seraphina list-agents`, etc.
     if args.rest:
         intent = " ".join(args.rest).strip()
         if intent:
-            route(intent, args.dry_run)
-            return 0
+            return route(intent, args.dry_run)[2]
 
     print("")
     print("  Seraphina wizard - interactive Glyph shell")
@@ -995,6 +1110,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     print('  type "help" for intents, "exit" to quit')
     print("")
 
+    halted = halted_reason()
+    if halted:
+        print("  " + _gate.halt_message(halted), file=sys.stderr)
+        print("")
+
     dry = args.dry_run
     while True:
         try:
@@ -1003,12 +1123,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             print()
             break
         try:
-            stop, dry = route(line, dry)
+            stop, dry, _rc = route(line, dry)
             if stop:
                 break
-        except Exception as e:  # noqa: BLE001
-            print(f"  error: {e}")
-            _append(HISTORY_FILE, {"ts": _now(), "kind": "error", "text": str(e)})
+        except Exception as e:  # noqa: BLE001 - keep the shell alive, but say so
+            print(f"  error: {type(e).__name__}: {e}", file=sys.stderr)
     print("  goodbye.")
     return 0
 
