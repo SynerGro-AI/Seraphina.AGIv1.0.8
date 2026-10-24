@@ -1240,71 +1240,150 @@ class TestRemoteRegistry(unittest.TestCase):
                 os.environ.pop("GLYPH_HOME", None)
 
 
+class _EchoServer:
+    """A real HTTP server on 127.0.0.1 (random port) in a background thread.
+
+    It records each request it receives and answers with JSON describing it,
+    or with the status/body set in ``reply``."""
+
+    def __init__(self):
+        import http.server
+        import threading
+        self.requests = []
+        self.reply = None           # (status, content_type, body) override
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def _handle(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(n) if n else b""
+                outer.requests.append({"method": self.command, "path": self.path,
+                                       "headers": dict(self.headers), "body": body})
+                if outer.reply is not None:
+                    status, ctype, out = outer.reply
+                else:
+                    status, ctype = 200, "application/json"
+                    out = json.dumps({"echo": json.loads(body) if body else None,
+                                      "path": self.path,
+                                      "method": self.command}).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+
+            do_GET = do_POST = do_PUT = _handle
+
+            def log_message(self, *_a):
+                pass
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_exc):
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=5)
+
+
 class TestRemoteCall(unittest.TestCase):
-    def test_null_host_echoes(self):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        os.environ["GLYPH_HOME"] = self._td.name
+
+    def tearDown(self):
+        os.environ.pop("GLYPH_HOME", None)
+        self._td.cleanup()
+
+    def test_round_trip_to_local_server(self):
         from glyph import remote
-        with tempfile.TemporaryDirectory() as td:
-            os.environ["GLYPH_HOME"] = td
-            try:
-                remote.register(remote.RemoteHost(name="echo", base_url="null://"))
-                r = remote.call("echo", {"prompt": "hello"})
-                self.assertTrue(r.ok())
-                self.assertEqual(r.json, {"echo": {"prompt": "hello"}, "from": "echo"})
-            finally:
-                os.environ.pop("GLYPH_HOME", None)
-
-    def test_transport_called_with_auth(self):
-        from glyph import remote
-        captured = {}
-
-        def fake(method, url, headers, body, timeout):
-            captured.update(method=method, url=url, headers=headers, body=body)
-            return 200, {"Content-Type": "application/json"}, b'{"ok":true}'
-
-        with tempfile.TemporaryDirectory() as td:
-            os.environ["GLYPH_HOME"] = td
-            try:
-                remote.register(remote.RemoteHost(
-                    name="r", base_url="http://h:1", auth="bearer",
-                    token="abc", default_path="/v1/chat"))
-                remote.set_transport(fake)
-                try:
-                    r = remote.call("r", {"prompt": "hi"})
-                finally:
-                    remote.set_transport(None)
-            finally:
-                os.environ.pop("GLYPH_HOME", None)
-
+        with _EchoServer() as srv:
+            remote.register(remote.RemoteHost(name="echo", base_url=srv.url))
+            r = remote.call("echo", {"prompt": "hello"})
         self.assertTrue(r.ok())
-        self.assertEqual(r.json, {"ok": True})
-        self.assertEqual(captured["url"], "http://h:1/v1/chat")
-        self.assertEqual(captured["method"], "POST")
-        self.assertEqual(captured["headers"].get("Authorization"), "Bearer abc")
-        self.assertEqual(captured["headers"].get("Content-Type"), "application/json")
-        self.assertEqual(json.loads(captured["body"].decode("utf-8")), {"prompt": "hi"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.json, {"echo": {"prompt": "hello"}, "path": "/", "method": "POST"})
+        self.assertEqual(len(srv.requests), 1)
+
+    def test_request_carries_auth_path_and_body(self):
+        from glyph import remote
+        with _EchoServer() as srv:
+            remote.register(remote.RemoteHost(
+                name="r", base_url=srv.url, auth="bearer",
+                token="abc", default_path="/v1/chat"))
+            r = remote.call("r", {"prompt": "hi"})
+        self.assertTrue(r.ok())
+        req = srv.requests[0]
+        self.assertEqual(req["path"], "/v1/chat")
+        self.assertEqual(req["method"], "POST")
+        self.assertEqual(req["headers"].get("Authorization"), "Bearer abc")
+        self.assertEqual(req["headers"].get("Content-Type"), "application/json")
+        self.assertTrue(req["headers"].get("User-Agent", "").startswith("glyph-remote/"))
+        self.assertEqual(json.loads(req["body"].decode("utf-8")), {"prompt": "hi"})
+
+    def test_header_and_basic_auth(self):
+        import base64
+        from glyph import remote
+        with _EchoServer() as srv:
+            remote.register(remote.RemoteHost(name="h", base_url=srv.url, auth="header",
+                                              header_name="X-Api-Key", token="k1"))
+            remote.register(remote.RemoteHost(name="b", base_url=srv.url, auth="basic",
+                                              token="user:pass"))
+            remote.call("h", {})
+            remote.call("b", {})
+        self.assertEqual(srv.requests[0]["headers"].get("X-Api-Key"), "k1")
+        self.assertEqual(srv.requests[1]["headers"].get("Authorization"),
+                         "Basic " + base64.b64encode(b"user:pass").decode("ascii"))
+
+    def test_http_error_status_is_not_ok(self):
+        from glyph import remote
+        with _EchoServer() as srv:
+            srv.reply = (503, "application/json", b'{"error": "busy"}')
+            remote.register(remote.RemoteHost(name="r", base_url=srv.url))
+            r = remote.call("r", {"prompt": "hi"})
+        self.assertFalse(r.ok())
+        self.assertEqual(r.status, 503)
+        self.assertEqual(r.json, {"error": "busy"})
+
+    def test_unreachable_host_raises(self):
+        import socket
+        from glyph import remote
+        with socket.socket() as sock:          # a port nothing listens on
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        remote.register(remote.RemoteHost(name="gone", base_url=f"http://127.0.0.1:{port}",
+                                          timeout=5))
+        with self.assertRaises(remote.RemoteError):
+            remote.call("gone", {})
 
     def test_bad_scheme_rejected(self):
         from glyph import remote
-        with tempfile.TemporaryDirectory() as td:
-            os.environ["GLYPH_HOME"] = td
-            try:
-                remote.register(remote.RemoteHost(name="bad", base_url="file:///etc"))
+        for url in ("file:///etc", "null://", "data:,x"):
+            with self.subTest(url):
                 with self.assertRaises(remote.RemoteError):
-                    remote.call("bad", {})
-            finally:
-                os.environ.pop("GLYPH_HOME", None)
+                    remote.register(remote.RemoteHost(name="bad", base_url=url))
+        # A hand-edited remotes.json cannot sneak one past call() either.
+        (Path(self._td.name) / "remotes.json").write_text(
+            json.dumps({"bad": {"name": "bad", "base_url": "file:///etc"}}), encoding="utf-8")
+        with self.assertRaises(remote.RemoteError):
+            remote.call("bad", {})
 
 
 class TestRemoteCli(unittest.TestCase):
     def test_add_list_call_remove(self):
         import io, contextlib
         from glyph.cli import build_parser
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory() as td, _EchoServer() as srv:
             os.environ["GLYPH_HOME"] = td
             try:
                 p = build_parser()
                 ns = p.parse_args(["remote-add", "echo",
-                                   "--base-url", "null://", "--auth", "none"])
+                                   "--base-url", srv.url, "--auth", "none"])
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(ns.func(ns), 0)
                 buf = io.StringIO()
@@ -1316,10 +1395,33 @@ class TestRemoteCli(unittest.TestCase):
                 ns = p.parse_args(["remote-call", "echo", "--prompt", "hi"])
                 with contextlib.redirect_stdout(buf):
                     self.assertEqual(ns.func(ns), 0)
-                self.assertIn('"echo"', buf.getvalue())
+                self.assertIn("status: 200", buf.getvalue())
+                self.assertIn('"prompt": "hi"', buf.getvalue())
+                srv.reply = (500, "text/plain", b"boom")
+                buf = io.StringIO()
+                ns = p.parse_args(["remote-call", "echo", "--prompt", "hi"])
+                with contextlib.redirect_stdout(buf):
+                    self.assertEqual(ns.func(ns), 1)
+                self.assertIn("boom", buf.getvalue())
                 ns = p.parse_args(["remote-remove", "echo"])
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(ns.func(ns), 0)
+            finally:
+                os.environ.pop("GLYPH_HOME", None)
+
+    def test_remote_add_refuses_non_http_url(self):
+        import io, contextlib
+        from glyph.cli import build_parser
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["GLYPH_HOME"] = td
+            try:
+                p = build_parser()
+                ns = p.parse_args(["remote-add", "echo", "--base-url", "null://"])
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    self.assertEqual(ns.func(ns), 1)
+                self.assertIn("unsupported url scheme", err.getvalue())
+                self.assertFalse((Path(td) / "remotes.json").exists())
             finally:
                 os.environ.pop("GLYPH_HOME", None)
 
