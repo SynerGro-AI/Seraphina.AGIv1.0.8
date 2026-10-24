@@ -1,6 +1,9 @@
 # PHASE 1 EXECUTION BLUEPRINT
 ## Seraphina v2.0 Sprint-Based Engineering (12 Weeks to Beta Launch)
 
+> **Status: planned (design document).** None of the v2.0 systems described here (neural models, training, accuracy figures, mesh, security suite, payments) exist in this repository as of v1.0.12. For what is built, see [README.md](README.md) and the implementation table in [RULE_BASE_IMMUTABLE_ARCHITECTURE.md](RULE_BASE_IMMUTABLE_ARCHITECTURE.md).
+
+
 **Status:** PHASE 1 BEGINS NOW  
 **Timeline:** 12 weeks / 6 sprints of 2 weeks each  
 **Deliverable:** Working federated learning network (10-node beta)  

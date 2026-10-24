@@ -1,6 +1,9 @@
 # SERAPHINA v2.0: DISTRIBUTED MESH NETWORK
 ## Decentralized AGI Through User-Contributed Compute (Free Tier = GPU/NPU/TPU Participation)
 
+> **Status: planned (design document).** None of the v2.0 systems described here (neural models, training, accuracy figures, mesh, security suite, payments) exist in this repository as of v1.0.12. For what is built, see [README.md](README.md) and the implementation table in [RULE_BASE_IMMUTABLE_ARCHITECTURE.md](RULE_BASE_IMMUTABLE_ARCHITECTURE.md).
+
+
 **Status:** Economic & Technical Architecture  
 **Model:** Distributed learning mesh (not cloud datacenter)  
 **Revenue:** Freemium hardware acceleration tier  

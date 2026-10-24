@@ -1,6 +1,9 @@
 # SERAPHINA.AGI v2.0 - NEURAL AGI + SECURITY SUITE
 ## Complete Architecture Redesign: From Symbolic to Neural Learning
 
+> **Status: planned (design document).** None of the v2.0 systems described here (neural models, training, accuracy figures, mesh, security suite, payments) exist in this repository as of v1.0.12. For what is built, see [README.md](README.md) and the implementation table in [RULE_BASE_IMMUTABLE_ARCHITECTURE.md](RULE_BASE_IMMUTABLE_ARCHITECTURE.md).
+
+
 **Status:** Architecture Phase  
 **Target Release:** Q1 2027  
 **Scope:** Full AGI rewrite + Integrated Security  
