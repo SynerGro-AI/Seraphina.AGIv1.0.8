@@ -7,9 +7,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/seraphina-agi.svg)](https://pypi.org/project/seraphina-agi/)
 
-## Unreleased (on `main` after 1.0.12)
+## 1.2.0 (unreleased; not on PyPI yet)
 
-Audit fixes. Nothing in this section is on PyPI yet.
+Audit fixes. Nothing in this section is on PyPI yet. Full list, including
+what was deleted: [`CHANGELOG.md`](CHANGELOG.md).
 
 * **Rule base now verifies.** The 20 constitutional rules live in
   [`seraphina/constitution.py`](seraphina/constitution.py) and are hash-pinned.
@@ -30,6 +31,19 @@ Audit fixes. Nothing in this section is on PyPI yet.
   no mocks.
 * Removed `seraphina/triad.py`. It was unused and returned hard-coded,
   simulated output.
+* **Rule 19 halt.** A rule violation shuts Seraphina down: acting commands
+  exit 3 until a person runs `seraphina --reset-rules "<reason>"`. Exit
+  codes: 0 ok, 1 error, 2 usage, 3 blocked. See the *Rule 19 halt and reset*
+  section of the rule-base doc.
+* **`glyph exec` / `glyph run` need `--trusted`** for code that runs outside
+  a real sandbox (rule 7).
+* **Py→JS/TS str methods** (`split`, `join`, `format`, `strip`, ...) with
+  CPython semantics; see [`README_RWAST.md`](README_RWAST.md).
+* **Glyph geometry** is derived from SHA-256 of the description instead of
+  one fixed template.
+* Removed the `~/.seraphina/wizard/history.jsonl` command log (collected without
+  consent, rule 1), the `null://` echo host and fake-transport hook in
+  `glyph remote`, and the unused `seraphina/language_bridge.py`.
 
 ## What's new in 1.0.12
 

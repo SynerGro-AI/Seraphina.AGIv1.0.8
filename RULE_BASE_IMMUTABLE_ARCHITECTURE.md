@@ -53,14 +53,68 @@ What exists today, and is covered by `tests/`:
 | 16 | User can request rule interpretations | **enforced** | `RuleBase.interpret()`, `seraphina rules <id>` |
 | 17 | Cap API rate limits (abuse prevention) | **enforced** | `RateLimiter` sliding window with an injectable clock (not yet wired into `plan-grok`) |
 | 18 | Require MFA for sensitive operations | **enforced** | `sensitive` requires `mfa_verified` (the MFA provider itself is planned) |
-| 19 | Automatic shutdown if rules violated | **enforced** | a privacy violation or a failed integrity check halts `RuleBase` until `reset()` |
+| 19 | Automatic shutdown if rules violated | **enforced** | any blocked action except a rule-17 rate-limit refusal, or a failed integrity check, halts `RuleBase` until a person runs `reset(reason)` (see *Rule 19 halt and reset* below) |
 | 20 | Human review for edge cases | **planned** | "edge case" is undefined, and there is no review queue |
+
+### Rule 19 halt and reset (enforced)
+
+* **What halts.** Any `RuleBase.evaluate()` that blocks (every rule except a
+  rule-17 rate-limit refusal) and any failed integrity check (the rule table
+  no longer matches `RULES_SHA256`) halts the rule base. The halt is written
+  to the audit log as a `halt` event and to `$SERAPHINA_HOME/halted.json`
+  (default `~/.seraphina`).
+* **What a halted Seraphina does.** Every other command (chat, `triad`,
+  memory writes, `forge`, `plan-grok`, glyph execution through the gate, ...)
+  is refused with exit code 3 and a message telling you to review the audit
+  log and run `seraphina --reset-rules "<reason>"`. The interactive shell
+  prints the same message when it starts. Read-only diagnostics keep working:
+  `--version`, `help`, `rules [rule_N]` and `--export-audit` exit 0;
+  `--verify-rules` prints `HALTED: <reason>` and exits 1.
+* **Deleting `halted.json` does not lift a halt.** On start-up the halt is
+  re-derived from the hash-chained audit log: if the last `halt`/`reset`
+  event in a valid chain is a `halt`, Seraphina starts halted. If the halt
+  file is unreadable, it fails closed (halted).
+* **Reset.** `seraphina --reset-rules "<reason>"` (or `RuleBase.reset(reason)`)
+  needs a non-empty reason, refuses if the rule table is tampered with, logs a
+  `reset` event with the reason and the halt it clears, and removes the halt
+  file.
+* **Known limit.** The chain lives on your own disk. Deleting the *whole*
+  audit log (and the halt file) starts a new, empty chain, so the halt and
+  the history are gone without trace. Edits, deletions and reordering of
+  individual records are detected; wholesale deletion is not. Anchoring the
+  chain head outside the machine (signed, published checkpoints) is
+  **planned**.
+* **No shell history.** The CLI used to append every command line to
+  `~/.seraphina/wizard/history.jsonl`. That was user data collected without consent
+  (rule 1), so the writer was removed in 1.2.0. An existing file from an older
+  version is left alone; delete it by hand if you want it gone.
+
+### Exit codes (enforced, `seraphina` and `glyph`)
+
+| Code | Meaning |
+|------|---------|
+| 0 | the command did its work |
+| 1 | error: bad input, failed check (`--verify-rules` found tampering, a broken chain, or a halt), network or HTTP failure |
+| 2 | usage error: unknown or malformed command or arguments |
+| 3 | blocked by the constitutional rules (a rule refused the action, or rule 19 has Seraphina halted) |
+
+### `--trusted` (rule 7, enforced)
+
+`glyph exec` and `glyph run` of a python/octalang glyph run code outside any
+sandbox (the v0.1 python sandbox is not a security boundary). They are refused
+with exit code 3, before anything runs, unless you pass `--trusted` to say you
+wrote or reviewed the code. The refusal is logged as a `refused` event; it is
+not a violation, so it does not trigger a rule-19 halt. A wasm glyph whose
+export runs under wasmtime (instantiated with no imports) counts as sandboxed
+and does not need `--trusted`. With `--trusted` the decision still goes
+through the rule gate (rule 8 refuses user code that can reach
+eval/exec/compile/`__import__`).
 
 **Planned / not built:** everything below about the neural layer
 (`seraphina/ml/*`, intent classifier, threat detector, RL policy, accuracy
 figures), cryptographic signing, blockchain or notarization, the `/etc` lock
 file, import hooks, `seraphina --model-report`, legal review, and any claim of
-GDPR, CCPA or HIPAA compliance. None of these exist in v1.0.12. Example code
+GDPR, CCPA or HIPAA compliance. None of these exist in 1.2.0. Example code
 in the sections below is illustrative design, not the shipped API.
 
 ---
@@ -137,8 +191,8 @@ CONSTITUTIONAL_RULES = {
 | Layer | Why Needed | Flexibility |
 |-------|-----------|------------|
 | **Rule Base** | Legal compliance (intent) | ❌ ZERO (hash-pinned) |
-| **Neural Layer** | Adaptation & learning | ✅ HIGH (learns continuously) |
-| **Execution** | Output | ✅ MEDIUM (constrained by rules) |
+| **Neural Layer** | Adaptation & learning | ⏳ planned: HIGH (would learn continuously); not built |
+| **Execution** | Output | ✅ enforced: MEDIUM (only what the rule gate allows runs) |
 
 **Example: Malware Detection**
 
@@ -476,9 +530,9 @@ def refuse_harmful(request):
 │  ├─ Agent Personality (adapts)                │
 │  └─ RL Policy (optimizes)                     │
 │                                                 │
-│  Updates every 100 interactions ✅             │
-│  Models retrained from feedback ✅             │
-│  Performance improves over time ✅             │
+│  Updates every 100 interactions ⏳ planned     │
+│  Models retrained from feedback ⏳ planned     │
+│  Performance improves over time ⏳ planned     │
 └───────────────────┬────────────────────────────┘
                     │
 ┌───────────────────▼────────────────────────────┐
@@ -489,8 +543,8 @@ def refuse_harmful(request):
 │  ├─ Transparency Rules                        │
 │  └─ Safety Rules                              │
 │                                                 │
-│  Hash-pinned (RULES_SHA256) ✅                 │
-│  Hash-chained local audit log ✅               │
+│  Hash-pinned (RULES_SHA256) ✅ enforced        │
+│  Hash-chained local audit log ✅ enforced      │
 │  Public audit trail ⏳ planned                 │
 │  Change announcement policy ⏳ planned         │
 └───────────────────┬────────────────────────────┘
@@ -567,13 +621,13 @@ def seraphina_process_request(user_input):
    # Planned: sign the rule table, publish the public key
    ```
 
-2. ✅ **Append-Only Audit Log** (hash-chained: edits are *detected*, not prevented)
+2. ✅ **Append-Only Audit Log** - enforced (hash-chained: edits are *detected*, not prevented)
    ```python
    # seraphina.constitution.AuditLog - each record carries the previous
    # record's SHA-256; AuditLog.verify() fails on edit/delete/reorder
    ```
 
-3. ✅ **Git Integrity**
+3. ✅ **Git Integrity** - enforced by git history
    ```bash
    # Rule Base in version control: every change to
    # seraphina/constitution.py (and its RULES_SHA256 pin) is a git commit.
@@ -598,14 +652,14 @@ def seraphina_process_request(user_input):
 | **Rule: Never eval()** | Present | Present | ❌ NO |
 | **Rule: Privacy consent** | Present | Present | ❌ NO |
 | **Rule: Disclose AI** | Present | Present | ❌ NO |
-| **Threat detector accuracy** | 95% | 98.7% | ✅ YES (learning) |
-| **Agent warmth score** | Baseline | Adaptive | ✅ YES (learning) |
-| **RL policy** | v0 | v2 | ✅ YES (learning) |
+| **Threat detector accuracy** | n/a | n/a | ⏳ planned: YES (learning); no detector exists, figures were illustrative |
+| **Agent warmth score** | n/a | n/a | ⏳ planned: YES (learning); not built |
+| **RL policy** | n/a | n/a | ⏳ planned: YES (learning); not built |
 
 **Translation:**
 - **Rules**: Constitutional, never change without major version bump + announcement
 - **Models**: Continuously improve within rule constraints
-- **Audit Trail**: Immutable, publicly verifiable
+- **Audit Trail**: enforced: hash-chained, so edits are detected (not prevented) and anyone with the file can verify it; deleting the whole log is not detected. Public publishing / external anchoring: planned
 
 ---
 
@@ -615,15 +669,15 @@ def seraphina_process_request(user_input):
 
 ```
 1. Rules are PUBLIC
-   ✅ You can read every rule: seraphina/constitution.py
+   ✅ enforced: you can read every rule: seraphina/constitution.py
    
 2. Rules are LOCKED
-   ✅ Hash-pinned: sha256:a8919638acb8da28dd944c4965351f8f41b5897a1316e169d9d3529403943f8a
+   ✅ enforced: hash-pinned: sha256:a8919638acb8da28dd944c4965351f8f41b5897a1316e169d9d3529403943f8a
    ⏳ Cryptographic signature: planned
    
 3. Rules are AUDITABLE
-   ✅ Every CLI Triad decision logged (hash-chained)
-   ✅ Export it: seraphina --export-audit FILE
+   ✅ enforced: every CLI Triad decision, halt and reset logged (hash-chained)
+   ✅ enforced: export it: seraphina --export-audit FILE
    
 4. Rules are LEGAL (goal)
    ⏳ GDPR / CCPA / HIPAA compliance: NOT claimed; not assessed
@@ -631,17 +685,20 @@ def seraphina_process_request(user_input):
    
 5. Rules CAN'T BE BYPASSED
    ⏳ Dual validation at entry & exit: planned (needs the neural layer)
-   ✅ Checks are deterministic, but they only judge the declared context
+   ✅ enforced: checks are deterministic, but they only judge the declared context
    
 6. Rules CAN ONLY IMPROVE
-   ✅ Neural learning makes Seraphina smarter
-   ✅ But never more permissive
-   ✅ Never bypasses rules
+   ⏳ Neural learning makes Seraphina smarter: planned (no neural layer yet)
+   ⏳ But never more permissive: planned (nothing learns yet)
+   ✅ Never bypasses rules: enforced for what goes through the gate
+      (rule 19 halts on a violation; it cannot see undeclared actions)
    
 7. Rules NOTIFY BEFORE CHANGING
-   ✅ If rules ever change: 30-day notice
-   ✅ Full explanation why
-   ✅ Old version stays available
+   ⏳ If rules ever change: 30-day notice: planned policy, no mechanism
+   ✅ Full explanation why: enforced in part (changing a rule changes
+      RULES_SHA256, so it needs a reviewed commit and a release note)
+   ✅ Old version stays available: enforced by PyPI/git (old releases
+      stay published)
 ```
 
 ### 7.2 Verification for End Users
@@ -733,20 +790,20 @@ class RulebaseGovernance:
 ```
 ✅ 20 Constitutional Rules (13 enforced, 7 planned)
 ⏳ Legal compliance (GDPR, CCPA, etc): goal, not assessed
-✅ Ethical constraints
-✅ Safety guardrails
-✅ Transparent audit trail
+✅ Ethical constraints: enforced for rules 9, 10 (11, 12 planned)
+✅ Safety guardrails: enforced for rules 17, 18, 19 (20 planned)
+✅ Transparent audit trail: enforced locally (hash-chained); public anchoring planned
 
 NEVER CHANGES without major version bump + announcement
 ```
 
 ### Adaptive Layer (Neural Learning) - planned, not built
 ```
-✅ Threat detection improves (85% → 98.7%)
-✅ Intent classification gets smarter
-✅ Agent personality learns from feedback
-✅ RL policy optimizes responses
-✅ Models retrain every 100 interactions
+⏳ Threat detection improves (85% → 98.7%) (planned)
+⏳ Intent classification gets smarter (planned)
+⏳ Agent personality learns from feedback (planned)
+⏳ RL policy optimizes responses (planned)
+⏳ Models retrain every 100 interactions (planned)
 
 CONTINUOUSLY IMPROVES within rule constraints
 ```
@@ -757,7 +814,7 @@ CONTINUOUSLY IMPROVES within rule constraints
 🛡️ Legally compliant
 🔒 Trustworthy (rules are law)
 📈 Self-improving (models improve)
-✅ Verifiable (public audit trail)
+⏳ Verifiable (public audit trail: planned; local chain enforced)
 ```
 
 ---
