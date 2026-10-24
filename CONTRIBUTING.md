@@ -39,8 +39,13 @@ optional install, and it just enables the xAI planner CLI.
 ## Running the test suite
 
 ```bash
-python -m unittest discover tests -v
+python -m unittest discover tests -v      # or: python -m pytest tests
+cd glyph && python -m pytest tests        # Glyph package manager suite
 ```
+
+Tests use real files and real subprocesses, never mocks. The JS backend
+tests run the emitted code under `node` and are skipped if node is not
+installed.
 
 For RWAST changes specifically:
 

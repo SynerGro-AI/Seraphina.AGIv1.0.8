@@ -148,7 +148,7 @@ def _cmd_forge(args) -> int:
     print(f"  wasm:   {len(res.wasm)} bytes")
 
     # Build a package tree in a temp dir (or user-provided source dir).
-    import tempfile, shutil
+    import tempfile
     if args.source:
         pkg_dir = Path(args.source).resolve()
         if pkg_dir.exists():
@@ -188,6 +188,49 @@ def _cmd_forge(args) -> int:
     return 0
 
 
+# --- constitutional gate (Seraphina rules 7 and 8) --------------------------
+
+def _gate_execution(action: str, *, sandboxed: bool, trusted: bool,
+                    code: "str | None" = None) -> "int | None":
+    """Return None if *action* may run, or exit code 3 after printing why not.
+
+    Rule 7 (sandbox untrusted glyphs): code that runs outside a real sandbox
+    needs an explicit --trusted from the person running it. Rule 8 (no eval
+    on user input): user code that can reach eval/exec is refused. When the
+    seraphina package is installed the decision goes through its rule gate
+    and audit log; without it, rule 7 is still applied here.
+    """
+    try:
+        from seraphina import gate as _sg
+    except ImportError:
+        _sg = None
+    if not sandboxed and not trusted:
+        # Refused before anything runs, so nothing was violated and rule 19
+        # does not shut down; the refusal is still logged when it can be.
+        print(f"glyph {action}: refused by rule 7 (sandbox untrusted glyphs): "
+              "this code would run outside a sandbox. Re-run with --trusted "
+              "if you wrote it or have reviewed it.", file=sys.stderr)
+        if _sg is not None:
+            from seraphina.constitution import AuditLog
+            AuditLog(_sg.audit_file()).append({
+                "event": "refused", "action": f"glyph.{action}",
+                "rule": "rule_7", "reason": "not sandboxed and not --trusted"})
+        return 3
+    if _sg is None:
+        return None
+    ctx = {"executes_glyph": True, "glyph_trusted": trusted,
+           "sandboxed": sandboxed, "requires_audit": True}
+    if code is not None:
+        ctx.update(code=code, input_source="user")
+    try:
+        _sg.check(f"glyph.{action}", ctx)
+    except _sg.Blocked as e:
+        print(f"glyph {action}: blocked by the constitutional rules:", file=sys.stderr)
+        print("  " + str(e).replace("\n", "\n  "), file=sys.stderr)
+        return 3
+    return None
+
+
 def _cmd_run(args) -> int:
     idx = GlyphIndex()
     versions = idx.versions(args.name)
@@ -210,6 +253,13 @@ def _cmd_run(args) -> int:
         except _wasm.WasmError as e:
             print(f"glyph: wasm load failed: {e}", file=sys.stderr)
             return 1
+        if args.export:
+            # A wasm instance can only touch the imports its host gives it;
+            # wasmtime is instantiated with none, so it is a real sandbox.
+            blocked = _gate_execution("run", sandboxed=(inst.host == "wasmtime"),
+                                      trusted=args.trusted)
+            if blocked is not None:
+                return blocked
         print(f"  host: {inst.host}")
         print(f"  exports: {', '.join(inst.info.exports) or '(none)'}")
         if args.export:
@@ -227,6 +277,10 @@ def _cmd_run(args) -> int:
         return 0
     if m.runtime in ("python", "octalang"):
         from .sandbox import load_entrypoint, SandboxError
+        # The v0.1 Python sandbox is documented as NOT a security boundary.
+        blocked = _gate_execution("run", sandboxed=False, trusted=args.trusted)
+        if blocked is not None:
+            return blocked
         try:
             mod = load_entrypoint(loc, m.entrypoint, module_name=f"glyph_run_{m.name}")
         except SandboxError as e:
@@ -534,7 +588,7 @@ def _cmd_transmute(args) -> int:
     if src.suffix.lower() in (".rwast", ".rwg") or from_lang == "rwast":
         try:
             root = decode_ast(src.read_bytes())
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - CLI boundary: any decode failure becomes exit 1 with the message
             print(f"glyph transmute: cannot decode {src}: {e}", file=sys.stderr)
             return 1
     else:
@@ -545,7 +599,7 @@ def _cmd_transmute(args) -> int:
         source_text = src.read_text(encoding="utf-8")
         try:
             root = parse(source_text, from_lang)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - CLI boundary: any parse failure becomes exit 1 with the message
             print(f"glyph transmute: parse error ({from_lang}): {e}",
                   file=sys.stderr)
             return 1
@@ -565,7 +619,7 @@ def _cmd_transmute(args) -> int:
         return 1
     try:
         result = emit(root, to_lang)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - CLI boundary: any emit failure becomes exit 1 with the message
         print(f"glyph transmute: emit error ({to_lang}): {e}", file=sys.stderr)
         return 1
 
@@ -581,10 +635,17 @@ def _cmd_transmute(args) -> int:
 
 
 def _cmd_exec(args) -> int:
-    """Transmute a source file to Python and execute it in-process.
+    """Transmute a source file to Python and run it in a child Python process.
 
-    glyph exec <file.py|.rwast|.rwg>
+    glyph exec <file.py|.js|.ts|.rwast|.rwg> --trusted
+
+    There is no sandbox here, so constitutional rule 7 needs --trusted, and
+    rule 8 refuses code that can reach eval/exec. The program runs as a
+    separate `python` process (like `python file.py`), never through exec()
+    inside this one. Exit code: the program's own, 3 if blocked, 1 on error.
     """
+    import subprocess
+    import tempfile
     from pathlib import Path as _P
     try:
         from seraphina.rwl.ast_ir import parse, emit, decode_ast
@@ -597,29 +658,35 @@ def _cmd_exec(args) -> int:
         print(f"glyph exec: not found: {src}", file=sys.stderr)
         return 1
 
-    if src.suffix.lower() in (".rwast", ".rwg"):
-        root = decode_ast(src.read_bytes())
-        code_str = emit(root, "python")
-    else:
-        from_lang = _detect_lang_from_ext(str(src))
-        if not from_lang or from_lang not in ("python", "js", "ts"):
-            print(f"glyph exec: cannot run {src.suffix} (need .py/.rwast/.rwg)",
-                  file=sys.stderr)
-            return 1
-        source_text = src.read_text(encoding="utf-8")
-        root = parse(source_text, from_lang)
-        code_str = emit(root, "python")
-
-    namespace = {"__name__": "__main__", "__file__": str(src)}
     try:
-        compiled = compile(code_str, str(src), "exec")
-        exec(compiled, namespace)   # noqa: S102  - intentional dynamic exec
-    except SystemExit as e:
-        return int(e.code) if isinstance(e.code, int) else 0
-    except Exception as e:
-        print(f"glyph exec: runtime error: {e}", file=sys.stderr)
+        if src.suffix.lower() in (".rwast", ".rwg"):
+            root = decode_ast(src.read_bytes())
+        else:
+            from_lang = _detect_lang_from_ext(str(src))
+            if not from_lang or from_lang not in ("python", "js", "ts"):
+                print(f"glyph exec: cannot run {src.suffix} (need .py/.js/.ts/.rwast/.rwg)",
+                      file=sys.stderr)
+                return 1
+            root = parse(src.read_text(encoding="utf-8"), from_lang)
+        code_str = emit(root, "python")
+    except Exception as e:  # noqa: BLE001 - any decode/parse/emit failure
+        print(f"glyph exec: cannot transmute {src}: {e}", file=sys.stderr)
         return 1
-    return 0
+
+    blocked = _gate_execution("exec", sandboxed=False, trusted=args.trusted,
+                              code=code_str)
+    if blocked is not None:
+        return blocked
+
+    with tempfile.TemporaryDirectory(prefix="glyph-exec-") as td:
+        prog = _P(td) / (src.stem + ".py")
+        prog.write_text(code_str, encoding="utf-8")
+        try:
+            return subprocess.call([sys.executable, str(prog)],
+                                   cwd=str(src.resolve().parent))
+        except OSError as e:
+            print(f"glyph exec: cannot start python: {e}", file=sys.stderr)
+            return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -690,6 +757,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="override wasm host (wasmtime|wasmer|null)")
     sr.add_argument("--arg", action="append", default=[],
                     help="integer argument(s) to pass to the wasm export")
+    sr.add_argument("--trusted", action="store_true",
+                    help="you reviewed this glyph; required for code that runs "
+                         "outside a real sandbox (python runtime, non-wasmtime hosts)")
     sr.set_defaults(func=_cmd_run)
 
     sx = sub.add_parser("forge",
@@ -726,13 +796,15 @@ def build_parser() -> argparse.ArgumentParser:
         "exec",
         help="transmute a source file (py/js/ts/.rwast/.rwg) to Python and execute it")
     se.add_argument("path", help="source file to transmute and run")
+    se.add_argument("--trusted", action="store_true",
+                    help="you wrote or reviewed this code (required: exec has no sandbox)")
     se.set_defaults(func=_cmd_exec)
 
     sra = sub.add_parser("remote-add",
         help="register a remote host endpoint in $GLYPH_HOME/remotes.json")
     sra.add_argument("name")
     sra.add_argument("--base-url", required=True,
-                     help="e.g. http://synergro.local:8080 (use null:// for echo-host)")
+                     help="http:// or https:// URL, e.g. http://synergro.local:8080")
     sra.add_argument("--auth", choices=["none", "bearer", "header", "basic"], default="none")
     sra.add_argument("--token", default="")
     sra.add_argument("--header-name", default="")

@@ -35,11 +35,11 @@ def _read_manifest_from_zip(glyph_path: Path) -> Manifest:
         try:
             raw = zf.read("manifest.json")
         except KeyError:
-            raise InstallError(f"{glyph_path.name}: missing manifest.json")
+            raise InstallError(f"{glyph_path.name}: missing manifest.json") from None
     try:
         return Manifest.from_dict(json.loads(raw.decode("utf-8")))
     except (json.JSONDecodeError, ManifestError) as e:
-        raise InstallError(f"{glyph_path.name}: invalid manifest ({e})")
+        raise InstallError(f"{glyph_path.name}: invalid manifest ({e})") from e
 
 
 def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
@@ -50,7 +50,7 @@ def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
         try:
             target.relative_to(dest_resolved)
         except ValueError:
-            raise InstallError(f"unsafe path in archive: {member.filename!r}")
+            raise InstallError(f"unsafe path in archive: {member.filename!r}") from None
     zf.extractall(dest)
 
 
@@ -75,7 +75,7 @@ def install(glyph_path: str | Path,
         try:
             IntegrityChecker.verify(manifest.sha256, actual)
         except IntegrityError as e:
-            raise InstallError(f"integrity check failed: {e}")
+            raise InstallError(f"integrity check failed: {e}") from e
     else:
         manifest.sha256 = actual  # accept-and-record on first install
 
@@ -102,8 +102,10 @@ def install(glyph_path: str | Path,
             "cost": manifest.cost_estimate,
             "emotion": dict(manifest.emotion),
         }, root=idx.root)
-    except Exception:  # noqa: BLE001 — ledger must never block install
-        pass
+    except Exception as e:  # noqa: BLE001 - ledger must never block install
+        import warnings
+        warnings.warn(f"glyph: ledger write for gate decision failed: {e!r}",
+                      RuntimeWarning, stacklevel=2)
     if not decision:
         raise InstallError(f"emotional gate denied install: {decision.reason}")
 
@@ -112,7 +114,7 @@ def install(glyph_path: str | Path,
     try:
         resolver.resolve(manifest)
     except ResolutionError as e:
-        raise InstallError(f"dependency resolution failed: {e}")
+        raise InstallError(f"dependency resolution failed: {e}") from e
 
     # 5. unpack to store
     target = idx.location(manifest.name, manifest.version)

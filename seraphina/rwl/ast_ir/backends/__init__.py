@@ -1,4 +1,8 @@
 """Backends: emit RWAST as target language source code."""
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..nodes import Node
 from .python_be import emit_python
 from .js_be import emit_js
 from .ts_be import emit_ts

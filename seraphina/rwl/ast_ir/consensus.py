@@ -5,8 +5,9 @@ Scores a translated RWAST against the original across three axes:
     Verification — semantic coverage (how many node kinds survived)
     Mercy-Civ   — graceful degradation (unknown/fallback node ratio)
 
-Each axis returns 0.0..1.0.  The Triad consensus is the harmonic mean
-(same formula used by RomanWheelTriad in seraphina.core).
+Each axis returns 0.0..1.0.  The consensus is the harmonic mean of the three.
+(This is a graded fidelity score. The runtime gate RomanWheelTriad in
+seraphina.rule_base is boolean: all three wheels must pass.)
 """
 from __future__ import annotations
 

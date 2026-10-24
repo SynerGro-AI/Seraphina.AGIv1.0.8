@@ -167,7 +167,7 @@ def decode(blob: bytes) -> tuple[RWLContainer, bytes]:
         try:
             source = zlib.decompress(payload)
         except zlib.error as e:
-            raise RWLError(f"zlib decompression failed: {e}")
+            raise RWLError(f"zlib decompression failed: {e}") from e
     else:
         source = payload
 

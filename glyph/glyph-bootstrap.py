@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-from glyph.bootstrap import bootstrap  # noqa: E402
+from glyph.bootstrap import bootstrap
 
 if __name__ == "__main__":
     bootstrap()

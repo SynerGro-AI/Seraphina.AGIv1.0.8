@@ -24,7 +24,7 @@ class TSBackend(JSBackend):
             type_str = f": {ann}[]" if ann else ": any[]"
             return f"...{name}{type_str}"
         if kind == "kwvar":
-            return f"kwargs: Record<string, any> = {{}}"
+            return "kwargs: Record<string, any> = {}"
         type_str = f": {ann}" if ann else ": any"
         default_str = f" = {self.emit(default, 0)}" if default else ""
         return f"{name}{type_str}{default_str}"

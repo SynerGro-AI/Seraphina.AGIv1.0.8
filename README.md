@@ -7,6 +7,44 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/seraphina-agi.svg)](https://pypi.org/project/seraphina-agi/)
 
+## 1.2.0 (unreleased; not on PyPI yet)
+
+Audit fixes. Nothing in this section is on PyPI yet. Full list, including
+what was deleted: [`CHANGELOG.md`](CHANGELOG.md).
+
+* **Rule base now verifies.** The 20 constitutional rules live in
+  [`seraphina/constitution.py`](seraphina/constitution.py) and are hash-pinned.
+  13 are enforced as deterministic checks and 7 are labelled **planned**. See
+  the status table in
+  [`RULE_BASE_IMMUTABLE_ARCHITECTURE.md`](RULE_BASE_IMMUTABLE_ARCHITECTURE.md).
+  New commands: `seraphina --verify-rules`, `seraphina --export-audit [FILE]`
+  and `seraphina -c "rules [rule_N]"`. CLI `triad` decisions go to a
+  hash-chained `~/.seraphina/audit.jsonl`.
+* **Glyph generator IDs** are now the first 16 hex characters of the SHA-256
+  of the description. The old IDs were gematria mod 999 and collided. Legacy
+  numeric IDs can still be read (`parse_glyph_id`, `matches_id`).
+* **Py→JS/TS** `range()`, `sorted()`, `sum()`, `max/min(iterable)` and
+  `enumerate()` now emit valid JS/TS. Tests run the output under node.
+* **CLI**: `rwl encode/decode/translate -o out` writes `out`. It used to
+  create a file named `-o`. `python -m seraphina.cli` now runs the CLI.
+* A real test suite in [`tests/`](tests/) (`python -m pytest tests`), with
+  no mocks.
+* Removed `seraphina/triad.py`. It was unused and returned hard-coded,
+  simulated output.
+* **Rule 19 halt.** A rule violation shuts Seraphina down: acting commands
+  exit 3 until a person runs `seraphina --reset-rules "<reason>"`. Exit
+  codes: 0 ok, 1 error, 2 usage, 3 blocked. See the *Rule 19 halt and reset*
+  section of the rule-base doc.
+* **`glyph exec` / `glyph run` need `--trusted`** for code that runs outside
+  a real sandbox (rule 7).
+* **Py→JS/TS str methods** (`split`, `join`, `format`, `strip`, ...) with
+  CPython semantics; see [`README_RWAST.md`](README_RWAST.md).
+* **Glyph geometry** is derived from SHA-256 of the description instead of
+  one fixed template.
+* Removed the `~/.seraphina/wizard/history.jsonl` command log (collected without
+  consent, rule 1), the `null://` echo host and fake-transport hook in
+  `glyph remote`, and the unused `seraphina/language_bridge.py`.
+
 ## What's new in 1.0.12
 
 **README refresh** — pushes the new **"Verify this is real"** trust
@@ -33,14 +71,20 @@ glyph transmute app.rwast --to python            # round-trip
 glyph exec app.py
 
 # From Python:
-from seraphina.rwl.ast_ir import translate, score
-js = translate(open("app.py").read(), src_lang="python", dst_lang="js")
-print(score(original_ast, translated_ast).triad)   # 0.0 - 1.0
+from seraphina.rwl.ast_ir import translate, parse, emit, score
+src = open("app.py").read()
+js = translate(src, "python", "js")
+original = parse(src, "python")
+round_trip = parse(emit(original, "python"), "python")
+print(score(original, round_trip).consensus)      # 0.0 - 1.0
 ```
 
 11 RWL byte-IR languages (now including `rwast`), 53 NodeTypes, sealed
 binary wire format, and a `TriadScore` (harmonic mean of geometric,
-verification, and mercy-civilization metrics) on every translation.
+verification, and mercy-civilization metrics). You compute it on request
+with `score()`; `translate()` does not compute it. Only a **Python** frontend
+exists, so `score` compares two RWAST trees (for example original vs. round
+trip). JS/TS frontends are **planned**.
 
 See [`README_RWAST.md`](README_RWAST.md) for the full API + wire format.
 
@@ -65,7 +109,7 @@ than the one above it. **None of them require trusting us.**
 
 ```bash
 pip install seraphina-agi
-seraphina --version              # → seraphina 1.0.11
+seraphina --version              # → seraphina 1.0.12
 glyph transmute hello.py --to js  # real Python→JS, not a stub
 ```
 
@@ -120,7 +164,7 @@ The full engine is here in the open:
 - [`seraphina/`](seraphina/) — Triad core + RWL byte-IR + **RWAST** semantic AST-IR
 - [`glyph/`](glyph/) — current-gen Glyph CLI (`transmute`, `exec`, `install`)
 - [`pyproject.toml`](pyproject.toml) — declared dependencies (none — stdlib only)
-- [`tests/`](tests/) — run them yourself
+- [`tests/`](tests/) — run them yourself: `python -m pytest tests` (Glyph's own suite: `cd glyph && python -m pytest tests`)
 
 No obfuscation, no compiled binaries, no `eval()` of remote strings,
 no network calls in the hot path. Search the codebase for `urllib`,
@@ -383,7 +427,8 @@ exit
 |                | Rule-24 forge, real WASM runtime (wasmtime when available),     |
 |                | emotional gate, ledger, doctor.                                 |
 | `seraphina/`   | Lean Python AGI core - Roman Wheel Triad, OctaLang Rule Base,   |
-|                | OctaLang glyph generator, deterministic gematria, the wizard.   |
+|                | OctaLang glyph generator (SHA-256 glyph IDs), standard Hebrew   |
+|                | gematria, the constitutional rule checks, the wizard.           |
 | `examples/`   | Source layouts you can `glyph pack`: `wheel_one` (real WASM,    |
 |                | value=179) and `seraphina_core` (OctaLang `.GL`).               |
 | `prebuilt/`   | Already-packed `.glyph` archives. Install with one command,     |
@@ -398,8 +443,11 @@ spiral turns each carry a fixed numeric weight (Rule 24:
 `value = sides*10 + points + dots + intersections + spirals*8`). That integer
 is the literal binary count emitted into a real `.wasm` module that Glyph
 packs, gates, and runs. The Roman Wheel Triad
-(Geometric / Verification / Mercy-Civ) provides three-way consensus before
-output is released. Same input, same output, every time.
+(Geometric / Verification / Mercy-Civ) is a deterministic gate. Output is
+released only if all three wheels pass: the checksum and intrinsic value
+recompute, the rule table's pinned hash matches, and the output does not claim
+to be human (rule 9). The local Triad does not generate replies; it only gates
+them. Same input, same output, every time.
 
 ## Layout
 
@@ -407,6 +455,7 @@ output is released. Same input, same output, every time.
 Seraphina.AGIv1.0.8/
 ├── glyph/              binary-native package manager (Python)
 ├── seraphina/          AGI core + interactive wizard
+├── tests/              seraphina test suite (python -m pytest tests)
 ├── examples/           wheel_one (WASM) + seraphina_core (.GL) sources
 ├── prebuilt/           shippable .glyph archives, ready to install
 ├── install.sh          curl|bash installer
@@ -422,6 +471,7 @@ Seraphina.AGIv1.0.8/
 python -m glyph doctor
 seraphina -c "triad hello"
 seraphina -c "build glyph 179"
+seraphina --verify-rules          # rule-table hash + audit-log chain
 ```
 
 ## Uninstall

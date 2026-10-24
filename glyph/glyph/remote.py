@@ -8,18 +8,17 @@ then referenced by name.
 Design goals:
   * stdlib only (`urllib.request`, `json`)
   * never invent endpoints \u2014 a remote must be explicitly registered
-  * deterministic tests \u2014 a ``null`` host is always available and a
-    pluggable ``set_transport()`` lets tests inject a fake HTTP layer
+  * only ``http://`` and ``https://`` endpoints; there is no built-in echo
+    host or injectable fake transport \u2014 tests talk to a real local server
   * every call is mirrored to the ledger and the in-process signal bus
 """
 from __future__ import annotations
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from .index import _resolve_root
 
@@ -83,7 +82,14 @@ def _save_registry(reg: dict[str, RemoteHost], root: Optional[Path] = None) -> P
     return p
 
 
+def _check_scheme(url: str) -> None:
+    # Only allow http/https schemes \u2014 stop file:// / data:// abuse.
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise RemoteError(f"unsupported url scheme: {url!r} (use http:// or https://)")
+
+
 def register(host: RemoteHost, *, root: Optional[Path] = None) -> Path:
+    _check_scheme(host.base_url)
     reg = _load_registry(root)
     reg[host.name] = host
     return _save_registry(reg, root)
@@ -110,29 +116,16 @@ def get(name: str, *, root: Optional[Path] = None) -> RemoteHost:
 
 
 # --------------------------------------------------------------------------
-# Transport (pluggable for tests)
+# Transport
 # --------------------------------------------------------------------------
-
-Transport = Callable[[str, str, dict, bytes, float], tuple[int, dict, bytes]]
-"""(method, url, headers, body, timeout) -> (status, response_headers, body)"""
-
-_transport: Optional[Transport] = None
-
-
-def set_transport(t: Optional[Transport]) -> None:
-    global _transport
-    _transport = t
-
 
 def _stdlib_transport(method: str, url: str, headers: dict,
                       body: bytes, timeout: float) -> tuple[int, dict, bytes]:
-    # Only allow http/https schemes \u2014 stop file:// / data:// abuse.
-    if not (url.startswith("http://") or url.startswith("https://")):
-        raise RemoteError(f"unsupported url scheme: {url!r}")
+    _check_scheme(url)
     req = urllib.request.Request(url, data=body if body else None,
                                  method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 \u2014 scheme checked
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {}), e.read() or b""
@@ -188,11 +181,11 @@ def call(name: str, payload: Any, *,
          host: Optional[RemoteHost] = None) -> RemoteResponse:
     """Send `payload` as JSON to remote `name` and return the response.
 
-    The null host (``base_url == "null://"``) short-circuits to an echo
-    response \u2014 useful for tests and for verifying the bridge wiring before
-    pointing it at a real endpoint.
+    Raises RemoteError for a non-http(s) URL or a connection failure. An HTTP
+    error status is returned (``resp.ok()`` is False), not raised.
     """
     h = host or get(name, root=root)
+    _check_scheme(h.base_url)
     full_path = path or h.default_path
     if not full_path.startswith("/"):
         full_path = "/" + full_path
@@ -207,20 +200,16 @@ def call(name: str, payload: Any, *,
                         "payload_keys": list(payload.keys()) if isinstance(payload, dict) else None},
                        root=root)
         _signals.publish("remote_call", {"name": h.name, "url": url})
-    except Exception:  # noqa: BLE001 \u2014 telemetry must never block
-        pass
-
-    if h.base_url.startswith("null://"):
-        body = json.dumps({"echo": payload, "from": h.name}).encode("utf-8")
-        return RemoteResponse(status=200, headers={"Content-Type": "application/json"},
-                              body=body, json={"echo": payload, "from": h.name})
+    except Exception as e:  # noqa: BLE001 - telemetry must never block the call
+        import warnings
+        warnings.warn(f"glyph remote: ledger/signal write failed: {e!r}",
+                      RuntimeWarning, stacklevel=2)
 
     body = b"" if payload is None else json.dumps(payload).encode("utf-8")
     headers = _build_headers(h)
     if body:
         headers["Content-Type"] = "application/json"
-    t = _transport or _stdlib_transport
-    status, resp_headers, resp_body = t(use_method, url, headers, body, h.timeout)
+    status, resp_headers, resp_body = _stdlib_transport(use_method, url, headers, body, h.timeout)
     parsed = None
     ctype = (resp_headers.get("Content-Type") or resp_headers.get("content-type") or "").lower()
     if "json" in ctype and resp_body:

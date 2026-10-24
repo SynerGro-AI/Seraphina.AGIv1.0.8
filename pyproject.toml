@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seraphina-agi"
-version = "1.0.12"
+version = "1.2.0"
 description = "Seraphina.AGI - deterministic Roman Wheel Triad core, binary-native glyph wizard"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -58,3 +58,25 @@ glyph = "glyph/glyph"
 [tool.setuptools.package-data]
 "seraphina.lib" = ["*.js"]
 glyph = ["*.json", "*.txt"]
+
+[tool.ruff]
+# Matches requires-python.
+target-version = "py39"
+extend-exclude = ["dist", "prebuilt", "npm"]
+
+[tool.ruff.lint]
+# Correctness and safety rules. Pinned explicitly so a ruff upgrade cannot
+# change what "clean" means. CI runs `ruff check .`; any finding fails it.
+select = [
+  "F",        # pyflakes: undefined names, unused imports/variables
+  "E9",       # syntax / io errors
+  "E711", "E712", "E713", "E714", "E721", "E722",  # comparison bugs, bare except
+  "W6",       # invalid escape sequences
+  "B",        # bugbear
+  "BLE001",   # blind `except Exception` must say why (noqa with reason)
+  "S102",     # exec()
+  "S307",     # eval()
+  "S110",     # try/except/pass
+  "PLW1510",  # subprocess.run without check=
+  "RUF100",   # unused noqa
+]

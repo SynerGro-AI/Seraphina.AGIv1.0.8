@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .index import GlyphIndex, DEFAULT_ROOT
+from .index import GlyphIndex
 
 
 def bootstrap(root: Path | None = None, *, verbose: bool = True) -> dict:
