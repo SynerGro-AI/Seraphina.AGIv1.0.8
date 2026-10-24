@@ -27,7 +27,11 @@ from typing import List, Optional
 
 from . import __version__
 from .core import RomanWheelTriad
-from .rule_base import OctaRuleBase
+from .rule_base import OctaRuleBase  # noqa: F401
+from .constitution import (
+    CONSTITUTIONAL_RULES, RULES_SHA256, AuditLog, RuleBase, enforced_rules,
+    planned_rules, rules_digest, verify_integrity,
+)
 
 
 # --- paths -------------------------------------------------------------------
@@ -37,6 +41,7 @@ WIZARD_DIR = SERAPHINA_HOME / "wizard"
 AGENTS_DIR = SERAPHINA_HOME / "agents"
 MEMORY_FILE = WIZARD_DIR / "memory.jsonl"
 HISTORY_FILE = WIZARD_DIR / "history.jsonl"
+AUDIT_FILE = SERAPHINA_HOME / "audit.jsonl"   # constitutional rule 13
 
 
 def _ensure_dirs() -> None:
@@ -274,9 +279,68 @@ def resolve_geometry_for_value(n: int) -> dict:
 
 def triad(message: str) -> None:
     result = RomanWheelTriad().process(message)
+    wheels = result["wheels"]
+    # Constitutional rule 13: every Triad decision goes to the hash-chained log.
+    AuditLog(AUDIT_FILE).append({
+        "event": "triad", "ts": _now(), "consensus": result["consensus"],
+        "input_sha256_16": wheels["geometric"]["hash"],
+        "checksum": wheels["verification"]["checksum"],
+        "reasons": wheels["verification"]["reasons"] + wheels["mercy_civ"]["reasons"],
+    })
     print(f"  consensus: {result['consensus']}")
     print(f"  response:  {result['response']}")
     print(f"  time:      {result['processing_time']}s")
+
+
+# --- constitutional rules -----------------------------------------------------
+
+def verify_rules() -> int:
+    """`seraphina --verify-rules`: rule-table hash + audit-log chain."""
+    ok_rules = verify_integrity()
+    print(f"  rules sha256 : {rules_digest()}")
+    print(f"  pinned       : {RULES_SHA256}")
+    print(f"  rule table   : {'OK' if ok_rules else 'TAMPERED'}")
+    log = AuditLog(AUDIT_FILE)
+    n = len(log.records())
+    ok_log = log.verify()
+    print(f"  audit log    : {'OK' if ok_log else 'BROKEN CHAIN'} ({n} records, {AUDIT_FILE})")
+    print(f"  enforced     : {len(enforced_rules())}/20   planned: {', '.join(planned_rules())}")
+    return 0 if (ok_rules and ok_log) else 1
+
+
+def export_audit(dest: Optional[str]) -> int:
+    """`seraphina --export-audit [file]`: verify, then copy or print the log."""
+    log = AuditLog(AUDIT_FILE)
+    if not log.verify():
+        print("  audit log chain is broken; refusing to export", file=sys.stderr)
+        return 1
+    data = AUDIT_FILE.read_text(encoding="utf-8") if AUDIT_FILE.exists() else ""
+    if dest:
+        Path(dest).write_text(data, encoding="utf-8")
+        print(f"  exported {len(log.records())} records -> {dest}")
+    else:
+        sys.stdout.write(data)
+    return 0
+
+
+def show_rules(rule: str = "") -> None:
+    """Constitutional rule 16: rule interpretations on request."""
+    if rule:
+        try:
+            r = RuleBase.interpret(rule)
+        except KeyError as e:
+            print(f"  {e.args[0]}")
+            return
+        print(f"  {r['rule']} [{r['category']}, {r['status']}]: {r['text']}")
+        print(f"  penalty: {r['penalty']}")
+        print(f"  how checked: {r['how_checked']}")
+        return
+    for cat, rules in CONSTITUTIONAL_RULES.items():
+        print(f"  {cat}  (penalty: {rules['penalty']})")
+        for rid, text in rules.items():
+            if rid != "penalty":
+                st = RuleBase.interpret(rid)["status"]
+                print(f"    {rid:<8} {st:<9} {text}")
 
 
 def plan_grok(message: str) -> None:
@@ -399,6 +463,8 @@ AGENTS (named AI workspaces)
 CORE
 ----
   triad <message>            run a Roman Wheel Triad consensus pass
+                             (logged to ~/.seraphina/audit.jsonl)
+  rules [rule_N]             list the 20 constitutional rules / interpret one
   plan-grok <message>        optional: ask xAI Grok for a build plan
                              (needs SERAPHINA_GROK_API_KEY or XAI_API_KEY)
   remember <text>            append a note to wizard memory
@@ -450,7 +516,7 @@ _KNOWN_COMMANDS = (
     "help", "version", "exit", "dry on", "dry off",
     "build glyph", "forge", "list", "show", "run", "install",
     "uninstall", "pack", "doctor", "history", "bootstrap",
-    "triad", "remember", "recall", "plan", "plan-grok",
+    "triad", "rules", "remember", "recall", "plan", "plan-grok",
     "create-agent", "list agents", "agent",
     "rwl encode", "rwl decode", "rwl info", "rwl wheel", "rwl translate",
     "transmute",
@@ -459,18 +525,43 @@ _KNOWN_COMMANDS = (
 
 # --- rwl handlers ----------------------------------------------------------
 
+_SHORT_OPTS = {"o": "out"}   # -o FILE  ==  --out FILE
+
+
 def _rwl_parse_named(args: list[str]) -> tuple[list[str], dict[str, str]]:
-    """Split positional args from k=v / --k v options."""
+    """Split positional args from options.
+
+    Accepts ``--key value``, ``--key=value``, ``-o value``, ``-o=value``,
+    ``-ovalue`` and ``key=value``. ``-o`` is stored under ``out``.
+    """
     pos: list[str] = []
     kw: dict[str, str] = {}
     i = 0
     while i < len(args):
         a = args[i]
-        if a.startswith("--") and i + 1 < len(args):
-            kw[a[2:]] = args[i + 1]
-            i += 2
-            continue
-        if "=" in a and not a.startswith("/") and not a.startswith("\\"):
+        if a.startswith("--") and len(a) > 2:
+            key, eq, val = a[2:].partition("=")
+            if eq:
+                kw[key] = val
+            elif i + 1 < len(args):
+                kw[key] = args[i + 1]
+                i += 1
+            else:
+                kw[key] = ""
+        elif len(a) >= 2 and a[0] == "-" and a[1] in _SHORT_OPTS:
+            key = _SHORT_OPTS[a[1]]
+            rest = a[2:]
+            if rest.startswith("="):
+                kw[key] = rest[1:]
+            elif rest:
+                kw[key] = rest
+            elif i + 1 < len(args):
+                kw[key] = args[i + 1]
+                i += 1
+            else:
+                kw[key] = ""
+        elif ("=" in a and not a.startswith(("/", "\\", "."))
+              and re.fullmatch(r"[A-Za-z_][\w-]*", a.split("=", 1)[0])):
             k, _, v = a.partition("=")
             kw[k] = v
         else:
@@ -479,19 +570,38 @@ def _rwl_parse_named(args: list[str]) -> tuple[list[str], dict[str, str]]:
     return pos, kw
 
 
+def _split_args(rest: str) -> list[str]:
+    """Split an intent's argument string, honouring quotes."""
+    if not rest:
+        return []
+    try:
+        parts = shlex.split(rest, posix=(os.name != "nt"))
+    except ValueError:
+        return rest.split()
+    if os.name == "nt":
+        parts = [p[1:-1] if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'" else p
+                 for p in parts]
+    return parts
+
+
 def rwl_encode(args: list[str]) -> None:
     from pathlib import Path as _P
     from .rwl import encode as _enc, info as _info, RWLError as _Err
     from .rwl.codec import _resolve_language as _resolve, _ext_for as _ext  # type: ignore
     pos, kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl encode <src> [out.rwg] [lang=auto|python|js|...] [compress=on|off]")
+        print("  usage: rwl encode <src> [-o out.rwg] [lang=auto|python|js|...] [compress=on|off]")
         return
     src = _P(pos[0])
     if not src.is_file():
         print(f"  rwl: not found: {src}")
         return
-    out = _P(pos[1]) if len(pos) >= 2 else src.with_suffix(src.suffix + ".rwg")
+    if kw.get("out"):
+        out = _P(kw["out"])
+    elif len(pos) >= 2:
+        out = _P(pos[1])
+    else:
+        out = src.with_suffix(src.suffix + ".rwg")
     lang_arg = kw.get("lang", kw.get("language", "auto"))
     try:
         lang = _resolve(None if lang_arg == "auto" else lang_arg, src)
@@ -516,9 +626,9 @@ def rwl_decode(args: list[str]) -> None:
     from pathlib import Path as _P
     from .rwl import decode as _dec, RWLError as _Err
     from .rwl.codec import _ext_for as _ext  # type: ignore
-    pos, _kw = _rwl_parse_named(args)
+    pos, kw = _rwl_parse_named(args)
     if not pos:
-        print("  usage: rwl decode <file.rwg> [out_path]")
+        print("  usage: rwl decode <file.rwg> [-o out_path]")
         return
     src = _P(pos[0])
     if not src.is_file():
@@ -529,7 +639,9 @@ def rwl_decode(args: list[str]) -> None:
     except _Err as e:
         print(f"  rwl: decode failed: {e}")
         return
-    if len(pos) >= 2:
+    if kw.get("out"):
+        out = _P(kw["out"])
+    elif len(pos) >= 2:
         out = _P(pos[1])
     else:
         base = src.name
@@ -622,8 +734,9 @@ def rwl_translate(args: list[str]) -> None:
     except Exception as exc:
         print(f"  rwl translate error: {exc}")
         return
-    out_path = kw.get("o", None) or kw.get("out", None)
+    out_path = kw.get("out") or (pos[1] if len(pos) >= 2 else None)
     if out_path:
+        _P(out_path).parent.mkdir(parents=True, exist_ok=True)
         _P(out_path).write_text(result, encoding="utf-8")
         print(f"  rwl: wrote {len(result)} chars → {out_path}")
     else:
@@ -654,7 +767,7 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
 
     # --- greetings / chit-chat ---
     if _GREETINGS.match(raw):
-        print("  Hi! I'm Seraphina. Type 'help' to see what I can do,")
+        print("  Hi! I'm Seraphina, an AI assistant. Type 'help' to see what I can do,")
         print("  or try: build glyph 179   |   list   |   triad hello world")
         return False, dry_run
 
@@ -691,6 +804,11 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
     m = re.match(r"(?i)^\s*recall(?:\s+(.*))?$", raw)
     if m:
         recall((m.group(1) or "").strip())
+        return False, dry_run
+
+    m = re.match(r"(?i)^\s*rules(?:\s+(\S+))?\s*$", raw)
+    if m:
+        show_rules((m.group(1) or "").strip())
         return False, dry_run
 
     m = re.match(r"(?i)^\s*triad\s+(.+)$", raw)
@@ -809,7 +927,7 @@ def route(line: str, dry_run: bool) -> tuple[bool, bool]:
     if m:
         action = m.group(1).lower()
         rest = m.group(2).strip()
-        args = rest.split() if rest else []
+        args = _split_args(rest)
         if action == "encode":
             rwl_encode(args)
         elif action == "decode":
@@ -840,6 +958,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="plan only, do not invoke glyph")
     p.add_argument("-c", "--command", help="run a single intent and exit")
     p.add_argument("--version", action="store_true")
+    p.add_argument("--verify-rules", action="store_true",
+                   help="check the constitutional rule table hash and the audit-log chain")
+    p.add_argument("--export-audit", nargs="?", const="", default=None, metavar="FILE",
+                   help="verify and export the decision audit log (stdout if no FILE)")
     p.add_argument("rest", nargs=argparse.REMAINDER,
                    help="optional positional intent, e.g. 'seraphina create-agent'")
     args = p.parse_args(argv)
@@ -847,6 +969,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.version:
         print(f"seraphina {__version__}")
         return 0
+    if args.verify_rules:
+        return verify_rules()
+    if args.export_audit is not None:
+        return export_audit(args.export_audit or None)
 
     _ensure_dirs()
 
@@ -885,3 +1011,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             _append(HISTORY_FILE, {"ts": _now(), "kind": "error", "text": str(e)})
     print("  goodbye.")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
