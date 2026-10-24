@@ -9,8 +9,12 @@ Operator / builtin mapping table (Python → JS):
     def→function  class→class
     for x in y → for (const x of y)
     f-strings → template literals  `${...}`
-    print(...)  → console.log(...)
-    len(x)      → x.length    (1-arg only)
+    print(...)  → __py_print([...], sep, end)  (Python str() of each value)
+    str(x)/repr(x), f-string fields → __py_str / __py_repr (True, None, 0.5, [1, 'a'])
+    len(x)      → __py_len(x) (code points for str, size for Set/Map, keys for dict)
+    s.upper() / s.split(...) / sep.join(...) / s.format(...) and the other
+                  str methods in js_pyrt.STR_METHODS → __py_<method>(s, ...),
+                  helpers with CPython semantics emitted once at module top
     range(...)  → Array.from(...) array with Python start/stop/step semantics
     sorted(x[, key, reverse]) → [...x].sort(<Python-order comparator>)
     sum(x[, s]) → [...x].reduce((a, b) => a + b, s)
@@ -20,7 +24,10 @@ Operator / builtin mapping table (Python → JS):
 """
 from __future__ import annotations
 
+import json
+
 from ..nodes import Node, NodeType
+from . import js_pyrt
 
 _INDENT = "  "   # 2-space JS convention
 
@@ -61,11 +68,27 @@ class JSBackend:
 
     def __init__(self, indent: str = _INDENT):
         self._ind = indent
+        self._level = 0
+        self._helpers: set[str] = set()
 
     def emit(self, node: Node, depth: int = 0) -> str:
+        outer = self._level == 0
+        if outer:
+            self._helpers = set()
         method = f"_emit_{node.kind.name.lower()}"
         fn = getattr(self, method, self._emit_unknown)
-        return fn(node, depth)
+        self._level += 1
+        try:
+            out = fn(node, depth)
+        finally:
+            self._level -= 1
+        if outer and self._helpers:
+            out = js_pyrt.prelude(self._helpers, self._type_suffix) + "\n" + out
+        return out
+
+    def _helper(self, name: str) -> str:
+        self._helpers.add(name)
+        return name
 
     def _pad(self, depth: int) -> str:
         return self._ind * depth
@@ -117,7 +140,7 @@ class JSBackend:
         if kind == "var":
             return f"...{name}"
         if kind == "kwvar":
-            return f"kwargs = {{}}"
+            return "kwargs = {}"
         default_str = f" = {self.emit(default, 0)}" if default else ""
         return f"{name}{ts_ann}{default_str}"
 
@@ -200,8 +223,7 @@ class JSBackend:
         if orelse.children:
             if len(orelse.children) == 1 and orelse.children[0].kind == NodeType.IF:
                 inner = self._emit_if(orelse.children[0], depth)
-                last_close = lines.pop()
-                lines[-1] = lines[-1]  # keep
+                lines.pop()  # the closing "}" becomes "} else if (...) {"
                 lines.append(self._pad(depth) + "} else " + inner.lstrip())
             else:
                 lines[-1] = self._pad(depth) + "} else {"
@@ -273,7 +295,7 @@ class JSBackend:
     def _emit_assert(self, node: Node, depth: int) -> str:
         test = self.emit(node.children[0], 0)
         msg = (f", {self.emit(node.children[1], 0)}"
-               if len(node.children) > 1 else f', "Assertion failed"')
+               if len(node.children) > 1 else ', "Assertion failed"')
         return self._pad(depth) + f"console.assert({test}{msg}){self._semi()}"
 
     def _emit_delete(self, node: Node, depth: int) -> str:
@@ -298,11 +320,16 @@ class JSBackend:
     def _emit_call(self, node: Node, depth: int) -> str:
         func_node = node.children[0]
         args_nodes = node.children[1:]
-        # Handle len(x) → x.length
         if func_node.kind == NodeType.NAME and func_node.data.get("id") == "len":
             positional = [c for c in args_nodes if c.kind != NodeType.KWARG]
-            if len(positional) == 1:
-                return self.emit(positional[0], 0) + ".length"
+            if len(positional) == 1 and len(args_nodes) == 1:
+                return f"{self._helper('__py_len')}({self.emit(positional[0], 0)})"
+        if func_node.kind == NodeType.ATTR and func_node.children:
+            method = func_node.data.get("attr")
+            if method == "format":
+                return self._emit_str_format(func_node.children[0], args_nodes)
+            if method in js_pyrt.STR_METHODS:
+                return self._emit_str_method(method, func_node.children[0], args_nodes)
         if func_node.kind == NodeType.NAME:
             special = self._emit_builtin_special(func_node.data.get("id"), args_nodes)
             if special is not None:
@@ -320,15 +347,72 @@ class JSBackend:
                 args.append(self.emit(c, 0))
         return f"{func_str}({', '.join(args)})"
 
+    def _emit_str_method(self, method: str, recv: Node, args_nodes: list) -> str:
+        """s.<method>(...) → __py_<method>(s, ...). Keyword arguments are
+        placed by CPython's parameter names; gaps become null, which every
+        helper treats as "not given"."""
+        helper, params = js_pyrt.STR_METHODS[method]
+        args: list[str] = []
+        kw: dict[str, str] = {}
+        for c in args_nodes:
+            if c.kind == NodeType.KWARG:
+                key = c.data.get("key")
+                if key is None or key not in params:
+                    raise ValueError(f"cannot translate {method}() keyword argument "
+                                     f"{'**' if key is None else key + '='} to JS")
+                kw[key] = self.emit(c.children[0], 0) if c.children else "null"
+            elif c.kind == NodeType.STARRED:
+                if kw:
+                    raise ValueError(f"cannot translate {method}(*args) after keywords to JS")
+                args.append(f"...{self.emit(c.children[0], 0)}")
+            else:
+                if kw:
+                    raise ValueError(f"positional argument after keyword in {method}()")
+                args.append(self.emit(c, 0))
+        if kw:
+            if any(a.startswith("...") for a in args):
+                raise ValueError(f"cannot translate {method}(*args, key=...) to JS")
+            last = max(params.index(k) for k in kw)
+            for i in range(len(args), last + 1):
+                args.append(kw.get(params[i], "null"))
+        return f"{self._helper(helper)}({', '.join([self.emit(recv, 0)] + args)})"
+
+    def _emit_str_format(self, recv: Node, args_nodes: list) -> str:
+        pos: list[str] = []
+        kw: list[str] = []
+        for c in args_nodes:
+            if c.kind == NodeType.KWARG:
+                key = c.data.get("key")
+                val = self.emit(c.children[0], 0) if c.children else "null"
+                kw.append(f"...{val}" if key is None else f"{json.dumps(key)}: {val}")
+            elif c.kind == NodeType.STARRED:
+                pos.append(f"...{self.emit(c.children[0], 0)}")
+            else:
+                pos.append(self.emit(c, 0))
+        return (f"{self._helper('__py_format')}({self.emit(recv, 0)}, "
+                f"[{', '.join(pos)}], {{{', '.join(kw)}}})")
+
     def _emit_builtin_special(self, name, args_nodes: list) -> "str | None":
         """Builtins whose JS form is not a plain rename. Returns None to fall
         back to the generic call path (e.g. for *args)."""
-        if any(c.kind == NodeType.STARRED for c in args_nodes):
+        starred = any(c.kind == NodeType.STARRED for c in args_nodes)
+        if starred and name != "print":
             return None
         pos = [self.emit(c, 0) for c in args_nodes if c.kind != NodeType.KWARG]
         kw = {c.data.get("key"): (self.emit(c.children[0], 0) if c.children else "undefined")
               for c in args_nodes if c.kind == NodeType.KWARG}
         t = self._type_suffix
+        if name == "print":  # *xs spreads into the array: [...xs]
+            if set(kw) - {"sep", "end"}:
+                raise ValueError("cannot translate print(" + ", ".join(
+                    f"{k}=" for k in sorted(k for k in kw if k not in ("sep", "end"))) + ") to JS")
+            sep = kw.get("sep", "null")
+            end = kw.get("end", "null")
+            return f"{self._helper('__py_print')}([{', '.join(pos)}], {sep}, {end})"
+        if name in ("str", "repr") and not kw and len(pos) <= 1:
+            if not pos:
+                return '""'
+            return f"{self._helper('__py_' + name)}({pos[0]})"
         if name == "range" and not kw and 1 <= len(pos) <= 3:
             # Python range() -> a real array (works in for-of, spread, .length).
             if len(pos) == 1:
@@ -447,7 +531,6 @@ class JSBackend:
             return "true" if v else "false"
         if t == "str":
             # Use JSON encoding for safe JS string literal
-            import json
             return json.dumps(str(v))
         if t == "bytes":
             data = bytes(v) if isinstance(v, list) else v
@@ -505,11 +588,11 @@ class JSBackend:
         for c in node.children:
             if c.kind == NodeType.CONST and c.data.get("type") == "str":
                 raw = c.data.get("value", "")
-                raw = raw.replace("`", "\\`").replace("\\", "\\\\")
+                raw = raw.replace("\\", "\\\\").replace("`", "\\`")
                 raw = raw.replace("${", "\\${")
                 parts.append(raw)
             else:
-                parts.append("${" + self.emit(c, 0) + "}")
+                parts.append("${" + self._helper("__py_str") + "(" + self.emit(c, 0) + ")}")
         return "`" + "".join(parts) + "`"
 
     def _emit_comprehension(self, node: Node, depth: int) -> str:
